@@ -66,6 +66,13 @@ struct ProjectListView: View {
                             modelContext.delete(rc)
                         }
                     }
+                    
+                    // Aggiorna "Ferri Principali" nel nuovo nome "Contatore Globale"
+                    for counter in project.counters {
+                        if counter.title == "Ferri Principali" {
+                            counter.title = "Contatore Globale"
+                        }
+                    }
                 }
                 
                 if projects.isEmpty && !didAutoLoadSampleV4 {
@@ -129,7 +136,7 @@ struct ProjectListView: View {
                         title: newProjectTitle.isEmpty ? "Nuovo Lavoro" : newProjectTitle,
                         designer: newProjectDesigner
                     )
-                    let defaultCounter = RowCounter(title: "Ferri Principali")
+                    let defaultCounter = RowCounter(title: "Contatore Globale")
                     defaultCounter.project = project
                     project.counters.append(defaultCounter)
                     
@@ -161,7 +168,7 @@ struct ProjectListView: View {
             pdfData: pdfData
         )
         
-        let c1 = RowCounter(title: "Ferri Principali")
+        let c1 = RowCounter(title: "Contatore Globale")
         c1.project = project
         project.counters.append(c1)
         
