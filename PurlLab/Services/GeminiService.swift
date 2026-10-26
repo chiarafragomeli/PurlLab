@@ -34,7 +34,7 @@ enum GeminiError: LocalizedError {
         case .missingApiKey:
             return "Chiave API di Gemini non trovata. Inseriscila nelle Impostazioni."
         case .invalidApiKeyFormat:
-            return "La chiave API non è valida: le chiavi di Google AI Studio iniziano sempre con 'AIzaSy'. Creane una gratuitamente su aistudio.google.com"
+            return "La chiave API inserita sembra troppo corta o non valida. Inserisci una chiave valida da Google AI Studio."
         case .invalidURL:
             return "URL dell'endpoint non valido."
         case .networkError(let msg):
@@ -55,11 +55,11 @@ final class GeminiService: @unchecked Sendable {
         }
         
         let apiKey = rawKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !apiKey.starts(with: "AIzaSy") {
+        if apiKey.count < 20 {
             throw GeminiError.invalidApiKeyFormat
         }
         
-        let urlString = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=\(apiKey)"
+        let urlString = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=\(apiKey)"
         guard let url = URL(string: urlString) else {
             throw GeminiError.invalidURL
         }
