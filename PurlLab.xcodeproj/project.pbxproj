@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		81FA378129F01B2E00112233 /* GaugeRecalculationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81FA378029F01B2E00112233 /* GaugeRecalculationView.swift */; };
 		09B0864FE338D3382FC25C7D /* GuideCompletionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3122C4020207D8901745592B /* GuideCompletionView.swift */; };
 		0F1A9825AB02BAF58E453EF1 /* GuideView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F03DA82C19075EAC1BBC944E /* GuideView.swift */; };
 		0F26500457C14AD709FDD4E1 /* PurlLabApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32C7C9AE21E0B8E8EF01F13F /* PurlLabApp.swift */; };
@@ -38,6 +39,7 @@
 		4CD9112FA38A149EE5D1E01F /* PurlLab.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = PurlLab.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		5EFA754564E139C334F4AEBE /* ProjectListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectListView.swift; sourceTree = "<group>"; };
 		792C06A33FA0538F86C89C58 /* NoFrillsGuide_M.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = NoFrillsGuide_M.json; sourceTree = "<group>"; };
+		81FA378029F01B2E00112233 /* GaugeRecalculationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GaugeRecalculationView.swift; sourceTree = "<group>"; };
 		899C3D33AF11D62B1DDF1281 /* KnittingProject.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KnittingProject.swift; sourceTree = "<group>"; };
 		9C61EFFA108303FDE921107A /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		A7B33461524B84F6AADF317E /* RowCounter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RowCounter.swift; sourceTree = "<group>"; };
@@ -157,6 +159,7 @@
 		CDBC0867153320B64B6503B8 /* Guide */ = {
 			isa = PBXGroup;
 			children = (
+				81FA378029F01B2E00112233 /* GaugeRecalculationView.swift */,
 				3122C4020207D8901745592B /* GuideCompletionView.swift */,
 				F03DA82C19075EAC1BBC944E /* GuideView.swift */,
 			);
@@ -240,6 +243,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				81FA378129F01B2E00112233 /* GaugeRecalculationView.swift in Sources */,
 				59154BC65B526C9A916CB02A /* CountersView.swift in Sources */,
 				A4714E5675F3B799E1E9BA89 /* GeminiService.swift in Sources */,
 				09B0864FE338D3382FC25C7D /* GuideCompletionView.swift in Sources */,

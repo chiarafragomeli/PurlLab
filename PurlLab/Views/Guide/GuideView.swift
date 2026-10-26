@@ -16,6 +16,7 @@ struct GuideView: View {
     @State private var currentStepIndex: Int = 0
     @State private var showingGenerateSheet = false
     @State private var showingAddStepSheet = false
+    @State private var showingGaugeSheet = false
     @State private var sectionToDelete: String? = nil
     @State private var showingDeleteSectionAlert = false
     @State private var errorMessage: String?
@@ -120,6 +121,36 @@ struct GuideView: View {
                             .padding(.top, 8)
                         }
                         
+                        // Banner Guida Ricalcolata per Campione Utente
+                        if project.isGaugeRecalculated {
+                            Button {
+                                showingGaugeSheet = true
+                            } label: {
+                                HStack(spacing: 8) {
+                                    Image(systemName: "sparkles")
+                                        .foregroundColor(.indigo)
+                                    let sts = project.userGaugeStitches ?? 0
+                                    let rws = project.userGaugeRows ?? 0
+                                    let stsStr = sts.truncatingRemainder(dividingBy: 1) == 0 ? "\(Int(sts))" : String(format: "%.1f", sts)
+                                    let rwsStr = rws.truncatingRemainder(dividingBy: 1) == 0 ? "\(Int(rws))" : String(format: "%.1f", rws)
+                                    Text("Guida ricalibrata sul tuo campione (\(stsStr) m × \(rwsStr) f)")
+                                        .font(.caption.bold())
+                                        .foregroundColor(.indigo)
+                                    Spacer()
+                                    Text("Dettagli")
+                                        .font(.caption2.bold())
+                                        .foregroundColor(.accentColor)
+                                }
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 8)
+                                .background(Color.indigo.opacity(0.12))
+                                .cornerRadius(8)
+                            }
+                            .buttonStyle(.plain)
+                            .padding(.horizontal)
+                            .padding(.top, 4)
+                        }
+                        
                         // Selettore Pattern (Card Singola) / Elenco Sezioni
                         Picker("Modalità", selection: $displayMode) {
                             Text(patternTabLabel).tag(GuideDisplayMode.card)
@@ -142,6 +173,9 @@ struct GuideView: View {
                                 },
                                 onFinishGuide: {
                                     finishGuide()
+                                },
+                                onOpenGaugeSheet: {
+                                    showingGaugeSheet = true
                                 }
                             )
                         } else {
@@ -200,6 +234,13 @@ struct GuideView: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     HStack(spacing: 12) {
                         Button {
+                            showingGaugeSheet = true
+                        } label: {
+                            Image(systemName: project.isGaugeRecalculated ? "gauge.with.needle.fill" : "gauge.with.needle")
+                                .foregroundColor(project.isGaugeRecalculated ? .indigo : .primary)
+                        }
+                        
+                        Button {
                             showingAddStepSheet = true
                         } label: {
                             Image(systemName: "plus")
@@ -208,6 +249,12 @@ struct GuideView: View {
                         
                         if !project.guideSteps.isEmpty {
                             Menu {
+                                Button {
+                                    showingGaugeSheet = true
+                                } label: {
+                                    Label("Adatta al Campione (AI)...", systemImage: "gauge.with.needle")
+                                }
+                                
                                 Button {
                                     showingAddStepSheet = true
                                 } label: {
@@ -251,6 +298,9 @@ struct GuideView: View {
             }
             .sheet(isPresented: $showingGenerateSheet) {
                 GenerateGuideSheet(project: project)
+            }
+            .sheet(isPresented: $showingGaugeSheet) {
+                GaugeRecalculationView(project: project)
             }
             .fullScreenCover(isPresented: $showingCompletion) {
                 GuideCompletionView(
@@ -385,6 +435,7 @@ struct GuideSingleCardView: View {
     var onNavigateToPage: (Int) -> Void
     var onDeleteStep: (GuideStep) -> Void
     var onFinishGuide: () -> Void = {}
+    var onOpenGaugeSheet: () -> Void = {}
     
     @State private var showingEditSheet = false
     private let haptic = UIImpactFeedbackGenerator(style: .medium)
@@ -583,6 +634,35 @@ struct GuideSingleCardView: View {
                             .font(.system(size: 17, weight: .regular, design: .rounded))
                             .lineSpacing(4)
                             .foregroundColor(.primary)
+                        
+                        // Banner interattivo Campione nella card Preparazione / Campione
+                        if step.sectionTitle.localizedCaseInsensitiveContains("Preparazione") || step.instructionText.localizedCaseInsensitiveContains("Campione") {
+                            Button {
+                                onOpenGaugeSheet()
+                            } label: {
+                                HStack(spacing: 12) {
+                                    Image(systemName: "gauge.with.needle")
+                                        .font(.title2)
+                                        .foregroundColor(.accentColor)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("Il tuo campione è diverso da quello del pattern?")
+                                            .font(.subheadline.bold())
+                                            .foregroundColor(.primary)
+                                        Text("Ricalcola tutto il pattern con l'AI mantenendo perfetta la taglia")
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+                                    }
+                                    Spacer()
+                                    Image(systemName: "sparkles")
+                                        .foregroundColor(.accentColor)
+                                }
+                                .padding(12)
+                                .background(Color.accentColor.opacity(0.12))
+                                .cornerRadius(12)
+                            }
+                            .buttonStyle(.plain)
+                            .padding(.vertical, 4)
+                        }
                         
                         // SUB-STEPS (Ferri o Giri del Ciclo Ripetuto, con evidenziazione del ferro attivo)
                         if !step.subSteps.isEmpty {

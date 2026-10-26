@@ -67,6 +67,7 @@ struct ProjectDetailView: View {
     @State private var targetPdfPage: Int = 1
     
     @State private var showingEditProject = false
+    @State private var showingGaugeSheet = false
     @State private var editedTitle = ""
     @State private var editedDesigner = ""
     @State private var editedSize = ""
@@ -124,16 +125,29 @@ struct ProjectDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    editedTitle = project.title
-                    editedDesigner = project.designer
-                    editedSize = project.selectedSize
-                    showingEditProject = true
-                } label: {
-                    Image(systemName: "pencil.circle")
-                        .font(.body)
+                HStack(spacing: 12) {
+                    Button {
+                        showingGaugeSheet = true
+                    } label: {
+                        Image(systemName: project.isGaugeRecalculated ? "gauge.with.needle.fill" : "gauge.with.needle")
+                            .font(.body)
+                            .foregroundColor(project.isGaugeRecalculated ? .indigo : .accentColor)
+                    }
+                    
+                    Button {
+                        editedTitle = project.title
+                        editedDesigner = project.designer
+                        editedSize = project.selectedSize
+                        showingEditProject = true
+                    } label: {
+                        Image(systemName: "pencil.circle")
+                            .font(.body)
+                    }
                 }
             }
+        }
+        .sheet(isPresented: $showingGaugeSheet) {
+            GaugeRecalculationView(project: project)
         }
         .sheet(isPresented: $showingEditProject) {
             NavigationStack {

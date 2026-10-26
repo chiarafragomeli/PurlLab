@@ -14,6 +14,14 @@ final class KnittingProject {
     var totalSecondsWorked: TimeInterval
     var completedAt: Date?
     
+    // Gauge (Campione su 10x10 cm)
+    var patternGaugeStitches: Double?
+    var patternGaugeRows: Double?
+    var userGaugeStitches: Double?
+    var userGaugeRows: Double?
+    var isGaugeRecalculated: Bool = false
+    var gaugeRecalculationSummary: String?
+    
     @Relationship(deleteRule: .cascade) var counters: [RowCounter] = []
     @Relationship(deleteRule: .cascade) var guideSteps: [GuideStep] = []
     @Relationship(deleteRule: .cascade) var timerSessions: [TimerSession] = []

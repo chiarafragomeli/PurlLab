@@ -6,6 +6,7 @@ struct GeneratedGuideResponse: Codable {
     let targetSize: String
     let gauge: String?
     let needles: [String]?
+    var recalculationSummary: String?
     let sections: [GeneratedSection]
 }
 
@@ -306,5 +307,364 @@ final class GeminiService: @unchecked Sendable {
         }
         
         throw lastError ?? GeminiError.networkError("Impossibile contattare i modelli Gemini.")
+    }
+    
+    // MARK: - Ricalcolo Pattern per Campione Personalizzato (AI & Locale)
+    
+    /// Ricalcola l'intera guida operativa con Gemini AI in base al campione personalizzato dell'utente
+    func recalculateGuideForGauge(
+        patternTitle: String,
+        targetSize: String,
+        pdfData: Data?,
+        currentStepsDescription: String,
+        patternStitches: Double,
+        patternRows: Double,
+        userStitches: Double,
+        userRows: Double
+    ) async throws -> GeneratedGuideResponse {
+        guard let rawKey = KeychainHelper.shared.getGeminiApiKey(), !rawKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw GeminiError.missingApiKey
+        }
+        
+        let apiKey = rawKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        if apiKey.count < 20 {
+            throw GeminiError.invalidApiKeyFormat
+        }
+        
+        let effectiveSize = targetSize.isEmpty ? "M" : targetSize
+        let stitchRatio = userStitches / patternStitches
+        let rowRatio = userRows / patternRows
+        let stitchDiffPct = String(format: "%+.1f%%", (stitchRatio - 1.0) * 100)
+        let rowDiffPct = String(format: "%+.1f%%", (rowRatio - 1.0) * 100)
+        
+        let systemPrompt = """
+        Sei una knitwear designer esperta, tecnica tessile e maestra di maglia.
+        Il tuo compito è RICALCOLARE MATEMATICAMENTE l'INTERA guida operativa a scheda singola per la taglia "\(effectiveSize)" in LINGUA ITALIANA, adattandola al CAMPIONE REALE ottenuto dall'utente con il proprio filato.
+        
+        DATI DEL CAMPIONE (misurato su 10 × 10 cm a maglia rasata):
+        - Campione originale del pattern: \(patternStitches) maglie × \(patternRows) ferri
+        - Campione reale dell'utente: \(userStitches) maglie × \(userRows) ferri
+        - Variazione larghezza (maglie): \(stitchDiffPct) (fattore di scala: \(String(format: "%.4f", stitchRatio)))
+        - Variazione altezza (ferri): \(rowDiffPct) (fattore di scala: \(String(format: "%.4f", rowRatio)))
+        
+        REGOLE FONDAMENTALI DI RICALCOLO:
+        1. LE DIMENSIONI IN CENTIMETRI DEL CAPO NON DEVONO CAMBIARE:
+           - Tutte le misure finite in cm (circonferenza torace, lunghezza corpo, lunghezza maniche, profondità sprone) devono rimanere IDENTICHE a quelle originali previste dal cartamodello per la taglia "\(effectiveSize)".
+        2. RICALCOLO DELLE MAGLIE:
+           - Ogni conteggio di maglie (avvio del collo, maglie davanti/dietro/maniche, maglie sottomanica, maglie ai polsini) deve essere ricalcolato moltiplicando per il fattore \(String(format: "%.4f", stitchRatio)) e arrotondato opportunamente.
+           - Mantieni la parità/modularità richiesta dal motivo (es. coste 1/1 = numero pari; coste 2/2 = multiplo di 4).
+           - Mantieni la perfetta simmetria tra davanti e dietro e tra manica destra e sinistra.
+        3. RICALCOLO DEI FERRI E DELLE RIPETIZIONI (repeat_pattern e work_to_measure):
+           - Per le sezioni lavorate a centimetri (stepType = "work_to_measure"), il conteggio stimato dei giri (targetStepCount) deve corrispondere a: (userRows / 10.0 * targetMeasureCm).
+           - Per gli aumenti raglan e le diminuzioni sagomate delle maniche, adatta il numero totale di ripetizioni (totalRepeats) e ferri (rowsPerRepeat * totalRepeats) in modo che alla fine dello sprone si ottengano sia i centimetri che il nuovo totale di maglie corretto per il corpo e le maniche.
+        4. AGGIORNAMENTO TESTI E CONTATORI:
+           - Ogni singola istruzione (`instruction`, `subSteps`, `repeatVariations`, `title`, `counterLabel`) DEVE RIPORTARE I NUOVI NUMERI RICALCOLATI.
+           - I nomi delle sezioni devono essere solo in italiano (es. "Preparazione", "Collo e Impostazione Sprone", "Sprone", "Corpo", "Manica Destra", "Manica Sinistra").
+        5. RIEPILOGO DELLE MODIFICHE:
+           - Inserisci nel campo "recalculationSummary" un riassunto chiaro e dettagliato in italiano di tutte le modifiche chiave apportate (es. "Avvio collo: 114 m → 104 m (-8.8%) | Sprone: 26 ripetizioni raglan anziché 29 | Maniche: 68 m → 62 m | Dimensioni finali in cm preservate").
+        """
+        
+        var userContentParts: [[String: Any]] = []
+        
+        if let pdfData = pdfData {
+            let base64Pdf = pdfData.base64EncodedString()
+            userContentParts.append([
+                "inline_data": [
+                    "mime_type": "application/pdf",
+                    "data": base64Pdf
+                ]
+            ])
+            userContentParts.append([
+                "text": "Ricalcola l'intero cartamodello per la taglia \(effectiveSize) adattandolo al campione dell'utente (\(userStitches) m × \(userRows) f rispetto all'originale \(patternStitches) m × \(patternRows) f). Restituisci la guida operativa completa ricalcolata in formato JSON."
+            ])
+        } else {
+            userContentParts.append([
+                "text": """
+                Ecco la guida attuale del pattern "\(patternTitle)" per la taglia "\(effectiveSize)":
+                \(currentStepsDescription)
+                
+                Ricalcola ciascuna sezione e passaggio adattando ogni numero al campione utente (\(userStitches) m × \(userRows) f vs originale \(patternStitches) m × \(patternRows) f). Restituisci la guida operativa completa ricalcolata in formato JSON.
+                """
+            ])
+        }
+        
+        let jsonSchema: [String: Any] = [
+            "type": "OBJECT",
+            "properties": [
+                "patternTitle": ["type": "STRING"],
+                "designer": ["type": "STRING"],
+                "targetSize": ["type": "STRING"],
+                "gauge": ["type": "STRING"],
+                "needles": [
+                    "type": "ARRAY",
+                    "items": ["type": "STRING"]
+                ],
+                "recalculationSummary": [
+                    "type": "STRING",
+                    "description": "Riepilogo in italiano delle modifiche numeriche apportate (maglie avviate, ripetizioni raglan, ferri totali)"
+                ],
+                "sections": [
+                    "type": "ARRAY",
+                    "items": [
+                        "type": "OBJECT",
+                        "properties": [
+                            "name": ["type": "STRING"],
+                            "steps": [
+                                "type": "ARRAY",
+                                "items": [
+                                    "type": "OBJECT",
+                                    "properties": [
+                                        "title": ["type": "STRING"],
+                                        "stepType": [
+                                            "type": "STRING",
+                                            "enum": ["info", "single_action", "repeat_pattern", "work_to_measure"]
+                                        ],
+                                        "instruction": ["type": "STRING"],
+                                        "subSteps": [
+                                            "type": "ARRAY",
+                                            "items": ["type": "STRING"]
+                                        ],
+                                        "repeatVariations": [
+                                            "type": "ARRAY",
+                                            "items": ["type": "STRING"]
+                                        ],
+                                        "rowsPerRepeat": ["type": "INTEGER"],
+                                        "totalRepeats": ["type": "INTEGER"],
+                                        "stitchCountBefore": ["type": "INTEGER"],
+                                        "stitchCountAfter": ["type": "INTEGER"],
+                                        "targetMeasureCm": ["type": "NUMBER"],
+                                        "hasCounter": ["type": "BOOLEAN"],
+                                        "counterLabel": ["type": "STRING"],
+                                        "targetStepCount": ["type": "INTEGER"],
+                                        "sourcePage": ["type": "INTEGER"],
+                                        "sourceQuote": ["type": "STRING"]
+                                    ],
+                                    "required": ["title", "stepType", "instruction", "hasCounter"]
+                                ]
+                            ]
+                        ],
+                        "required": ["name", "steps"]
+                    ]
+                ]
+            ],
+            "required": ["patternTitle", "targetSize", "sections"]
+        ]
+        
+        let requestBody: [String: Any] = [
+            "contents": [
+                [
+                    "role": "user",
+                    "parts": userContentParts
+                ]
+            ],
+            "system_instruction": [
+                "parts": [
+                    ["text": systemPrompt]
+                ]
+            ],
+            "generationConfig": [
+                "response_mime_type": "application/json",
+                "response_schema": jsonSchema,
+                "temperature": 0.1,
+                "thinkingConfig": [
+                    "thinkingBudget": 4096
+                ]
+            ]
+        ]
+        
+        let bodyData = try JSONSerialization.data(withJSONObject: requestBody)
+        let candidateModels = ["gemini-3-flash-preview", "gemini-2.5-flash"]
+        var lastError: Error?
+        
+        for model in candidateModels {
+            let urlString = "https://generativelanguage.googleapis.com/v1beta/models/\(model):generateContent?key=\(apiKey)"
+            guard let url = URL(string: urlString) else { continue }
+            
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.timeoutInterval = 150
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.setValue(apiKey, forHTTPHeaderField: "x-goog-api-key")
+            request.httpBody = bodyData
+            
+            do {
+                let (data, response) = try await URLSession.shared.data(for: request)
+                guard let httpResponse = response as? HTTPURLResponse else { continue }
+                
+                if httpResponse.statusCode == 200 {
+                    struct GeminiAPIResponse: Decodable {
+                        struct Candidate: Decodable {
+                            struct Content: Decodable {
+                                struct Part: Decodable {
+                                    let text: String?
+                                    let thought: Bool?
+                                }
+                                let parts: [Part]?
+                            }
+                            let content: Content?
+                        }
+                        let candidates: [Candidate]?
+                    }
+                    
+                    let apiResponse = try JSONDecoder().decode(GeminiAPIResponse.self, from: data)
+                    let parts = apiResponse.candidates?.first?.content?.parts ?? []
+                    let textPart = parts.last(where: { $0.thought != true && $0.text != nil }) ?? parts.last
+                    
+                    guard let jsonString = textPart?.text,
+                          let jsonData = jsonString.data(using: .utf8) else {
+                        throw GeminiError.parsingError("Nessun testo JSON generato da Gemini")
+                    }
+                    
+                    return try JSONDecoder().decode(GeneratedGuideResponse.self, from: jsonData)
+                } else {
+                    let errorText = String(data: data, encoding: .utf8) ?? "Status code: \(httpResponse.statusCode)"
+                    lastError = GeminiError.networkError("HTTP \(httpResponse.statusCode): \(errorText)")
+                    continue
+                }
+            } catch {
+                lastError = error
+                continue
+            }
+        }
+        
+        throw lastError ?? GeminiError.networkError("Impossibile contattare i modelli Gemini per il ricalcolo.")
+    }
+    
+    /// Ricalcolo matematico locale istantaneo di fallback (funziona anche offline e senza API key)
+    static func recalculateGuideLocally(
+        project: KnittingProject,
+        patternStitches: Double,
+        patternRows: Double,
+        userStitches: Double,
+        userRows: Double
+    ) -> GeneratedGuideResponse {
+        let stitchRatio = userStitches / patternStitches
+        let rowRatio = userRows / patternRows
+        
+        let sortedSteps = project.guideSteps.sorted(by: { $0.orderIndex < $1.orderIndex })
+        
+        // Raggruppa per sezione preservando l'ordine
+        var sectionMap: [String: [GuideStep]] = [:]
+        var sectionOrder: [String] = []
+        for step in sortedSteps {
+            if sectionMap[step.sectionTitle] == nil {
+                sectionMap[step.sectionTitle] = []
+                sectionOrder.append(step.sectionTitle)
+            }
+            sectionMap[step.sectionTitle]?.append(step)
+        }
+        
+        var generatedSections: [GeneratedSection] = []
+        
+        for secTitle in sectionOrder {
+            let steps = sectionMap[secTitle] ?? []
+            var genSteps: [GeneratedStep] = []
+            
+            for step in steps {
+                var newBefore = step.stitchCountBefore
+                var newAfter = step.stitchCountAfter
+                var newTotalRepeats = step.totalRepeats
+                var newTargetStepCount = step.targetStepCount
+                var newInstruction = step.instructionText
+                var newTitle = step.title
+                var newCounterLabel = step.counterLabel
+                
+                // Ricalcola maglie
+                if let b = step.stitchCountBefore, b > 0 {
+                    newBefore = max(1, Int(round(Double(b) * stitchRatio)))
+                }
+                if let a = step.stitchCountAfter, a > 0 {
+                    var recalculatedA = max(1, Int(round(Double(a) * stitchRatio)))
+                    // Se avvio coste 1/1 assicurati sia pari
+                    if step.sectionTitle.localizedCaseInsensitiveContains("Collo") || step.title.localizedCaseInsensitiveContains("Avvio") {
+                        if recalculatedA % 2 != 0 { recalculatedA += 1 }
+                    }
+                    newAfter = recalculatedA
+                }
+                
+                // Ricalcola ferri / ripetizioni
+                if step.stepType == "repeat_pattern" {
+                    if let repeats = step.totalRepeats, repeats > 0 {
+                        // Se sono aumenti raglan (+8 maglie), scala le ripetizioni per il ratio maglie
+                        if step.sectionTitle.localizedCaseInsensitiveContains("Sprone") || step.title.localizedCaseInsensitiveContains("Raglan") {
+                            newTotalRepeats = max(1, Int(round(Double(repeats) * stitchRatio)))
+                        } else {
+                            newTotalRepeats = max(1, Int(round(Double(repeats) * rowRatio)))
+                        }
+                        if let rpr = step.rowsPerRepeat {
+                            newTargetStepCount = (newTotalRepeats ?? repeats) * rpr
+                        }
+                    }
+                } else if step.stepType == "work_to_measure" {
+                    if let cm = step.targetMeasureCm, cm > 0 {
+                        newTargetStepCount = max(1, Int(round((userRows / 10.0) * cm)))
+                    } else if let origTarget = step.targetStepCount, origTarget > 0 {
+                        newTargetStepCount = max(1, Int(round(Double(origTarget) * rowRatio)))
+                    }
+                } else if step.hasCounter {
+                    if let origTarget = step.targetStepCount, origTarget > 0 {
+                        if step.counterLabel?.localizedCaseInsensitiveContains("Maglie") == true || (step.stitchCountAfter != nil && step.stitchCountAfter == origTarget) {
+                            newTargetStepCount = newAfter ?? max(1, Int(round(Double(origTarget) * stitchRatio)))
+                        } else {
+                            newTargetStepCount = max(1, Int(round(Double(origTarget) * rowRatio)))
+                        }
+                    }
+                }
+                
+                // Aggiorna testi numerici
+                if let oldA = step.stitchCountAfter, let recA = newAfter, oldA != recA {
+                    newTitle = newTitle.replacingOccurrences(of: "\(oldA)", with: "\(recA)")
+                    newInstruction = newInstruction.replacingOccurrences(of: "\(oldA) maglie", with: "\(recA) maglie")
+                    newInstruction = newInstruction.replacingOccurrences(of: "\(oldA) m", with: "\(recA) m")
+                }
+                if let oldR = step.totalRepeats, let recR = newTotalRepeats, oldR != recR {
+                    newTitle = newTitle.replacingOccurrences(of: "\(oldR) volte", with: "\(recR) volte")
+                    newTitle = newTitle.replacingOccurrences(of: "\(oldR) ripetizioni", with: "\(recR) ripetizioni")
+                    newInstruction = newInstruction.replacingOccurrences(of: "\(oldR) volte", with: "\(recR) volte")
+                    if let lbl = newCounterLabel {
+                        newCounterLabel = lbl.replacingOccurrences(of: "\(oldR)", with: "\(recR)")
+                    }
+                }
+                if let oldT = step.targetStepCount, let recT = newTargetStepCount, oldT != recT {
+                    newTitle = newTitle.replacingOccurrences(of: "\(oldT) ferri", with: "\(recT) ferri")
+                    newTitle = newTitle.replacingOccurrences(of: "\(oldT) giri", with: "\(recT) giri")
+                }
+                
+                let genStep = GeneratedStep(
+                    title: newTitle,
+                    stepType: step.stepType,
+                    instruction: newInstruction,
+                    subSteps: step.subSteps,
+                    repeatVariations: step.repeatVariations,
+                    rowsPerRepeat: step.rowsPerRepeat,
+                    totalRepeats: newTotalRepeats,
+                    stitchCountBefore: newBefore,
+                    stitchCountAfter: newAfter,
+                    targetMeasureCm: step.targetMeasureCm,
+                    hasCounter: step.hasCounter,
+                    counterLabel: newCounterLabel,
+                    targetStepCount: newTargetStepCount,
+                    sourcePage: step.sourcePage,
+                    sourceQuote: step.sourceQuote
+                )
+                genSteps.append(genStep)
+            }
+            
+            generatedSections.append(GeneratedSection(name: secTitle, steps: genSteps))
+        }
+        
+        let stitchPct = String(format: "%+.1f%%", (stitchRatio - 1.0) * 100)
+        let rowPct = String(format: "%+.1f%%", (rowRatio - 1.0) * 100)
+        let summary = "Ricalcolo Matematico Locale: Campione adattato da \(Int(patternStitches)) m × \(Int(patternRows)) f a \(Int(userStitches)) m × \(Int(userRows)) f per 10 cm (Maglie: \(stitchPct), Ferri: \(rowPct)). Misure sartoriali in cm preservate."
+        
+        return GeneratedGuideResponse(
+            patternTitle: project.title,
+            designer: project.designer,
+            targetSize: project.selectedSize,
+            gauge: "\(Int(userStitches)) maglie × \(Int(userRows)) ferri = 10 × 10 cm (Campione Utente)",
+            needles: nil,
+            recalculationSummary: summary,
+            sections: generatedSections
+        )
     }
 }
