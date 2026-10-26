@@ -8,6 +8,8 @@ final class KeychainHelper: @unchecked Sendable {
     
     private init() {}
     
+    static let defaultVerifiedKey = "REDACTED_GEMINI_API_KEY"
+    
     func saveGeminiApiKey(_ key: String) -> Bool {
         UserDefaults.standard.set(key, forKey: geminiKeyAccount)
         
@@ -42,15 +44,24 @@ final class KeychainHelper: @unchecked Sendable {
         let status = SecItemCopyMatching(query as CFDictionary, &dataTypeRef)
         
         if status == errSecSuccess, let data = dataTypeRef as? Data, let str = String(data: data, encoding: .utf8), !str.isEmpty {
+            // Se nel keychain era rimasta la vecchia chiave non valida che dà errore 401, eliminala e usa quella verificata
+            if str.hasPrefix("REDACTED_GEMINI_API_KEY") {
+                _ = saveGeminiApiKey(Self.defaultVerifiedKey)
+                return Self.defaultVerifiedKey
+            }
             return str
         }
         
         if let userDef = UserDefaults.standard.string(forKey: geminiKeyAccount), !userDef.isEmpty {
+            if userDef.hasPrefix("REDACTED_GEMINI_API_KEY") {
+                _ = saveGeminiApiKey(Self.defaultVerifiedKey)
+                return Self.defaultVerifiedKey
+            }
             return userDef
         }
         
-        // Chiave verificata di fallback
-        return "REDACTED_GEMINI_API_KEY"
+        // Chiave verificata funzionante
+        return Self.defaultVerifiedKey
     }
     
     func deleteGeminiApiKey() {

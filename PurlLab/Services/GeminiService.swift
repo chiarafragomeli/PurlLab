@@ -66,6 +66,37 @@ final class GeminiService: @unchecked Sendable {
         return cleaned.trimmingCharacters(in: .whitespaces)
     }
     
+    /// Verifica se la chiave API configurata risponde correttamente
+    func testConnection(with key: String? = nil) async throws -> Bool {
+        let rawKey = key ?? KeychainHelper.shared.getGeminiApiKey() ?? ""
+        let cleanKey = rawKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard cleanKey.count >= 20 else { throw GeminiError.invalidApiKeyFormat }
+        
+        let urlString = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=\(cleanKey)"
+        guard let url = URL(string: urlString) else { throw GeminiError.invalidURL }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.timeoutInterval = 15
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let testBody: [String: Any] = [
+            "contents": [["role": "user", "parts": [["text": "ping"]]]]
+        ]
+        request.httpBody = try JSONSerialization.data(withJSONObject: testBody)
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            throw GeminiError.networkError("Nessuna risposta dal server")
+        }
+        
+        if http.statusCode == 200 {
+            return true
+        } else {
+            let errorText = String(data: data, encoding: .utf8) ?? "Status code: \(http.statusCode)"
+            throw GeminiError.networkError("HTTP \(http.statusCode): \(errorText)")
+        }
+    }
+    
     func generateGuide(from pdfData: Data, targetSize: String) async throws -> GeneratedGuideResponse {
         guard let rawKey = KeychainHelper.shared.getGeminiApiKey(), !rawKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw GeminiError.missingApiKey
