@@ -12,6 +12,8 @@ final class GuideStep {
     var sourceQuote: String?
     var isCompleted: Bool
     var orderIndex: Int
+    var currentStepCount: Int = 0
+    var targetStepCount: Int?
     
     var project: KnittingProject?
     
@@ -23,7 +25,9 @@ final class GuideStep {
         sourcePage: Int? = nil,
         sourceQuote: String? = nil,
         isCompleted: Bool = false,
-        orderIndex: Int = 0
+        orderIndex: Int = 0,
+        currentStepCount: Int = 0,
+        targetStepCount: Int? = nil
     ) {
         self.id = UUID()
         self.sectionTitle = sectionTitle
@@ -34,5 +38,7 @@ final class GuideStep {
         self.sourceQuote = sourceQuote
         self.isCompleted = isCompleted
         self.orderIndex = orderIndex
+        self.currentStepCount = currentStepCount
+        self.targetStepCount = targetStepCount
     }
 }

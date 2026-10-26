@@ -18,6 +18,7 @@ struct GeneratedStep: Codable {
     let instruction: String
     let stitchCountAfter: Int?
     let targetMeasureCm: Double?
+    let targetStepCount: Int?
     let sourcePage: Int?
     let sourceQuote: String?
 }

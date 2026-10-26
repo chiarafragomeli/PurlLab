@@ -166,7 +166,8 @@ struct ProjectListView: View {
                         targetMeasureCm: stepData.targetMeasureCm,
                         sourcePage: stepData.sourcePage,
                         sourceQuote: stepData.sourceQuote,
-                        orderIndex: stepOrder
+                        orderIndex: stepOrder,
+                        targetStepCount: stepData.targetStepCount
                     )
                     step.project = project
                     project.guideSteps.append(step)

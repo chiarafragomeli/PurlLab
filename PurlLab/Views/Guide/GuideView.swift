@@ -1,14 +1,24 @@
 import SwiftUI
 import SwiftData
 
+enum GuideDisplayMode: String, CaseIterable {
+    case card = "Card Singola"
+    case list = "Elenco"
+}
+
 struct GuideView: View {
     @Bindable var project: KnittingProject
     @Environment(\.modelContext) private var modelContext
     var onSelectPdfPage: (Int) -> Void
     
+    @State private var displayMode: GuideDisplayMode = .card
+    @State private var currentStepIndex: Int = 0
     @State private var showingGenerateSheet = false
-    @State private var isGenerating = false
     @State private var errorMessage: String?
+    
+    private var sortedSteps: [GuideStep] {
+        project.guideSteps.sorted(by: { $0.orderIndex < $1.orderIndex })
+    }
     
     struct SectionGroup: Identifiable {
         let id: String
@@ -17,7 +27,6 @@ struct GuideView: View {
     }
     
     private var orderedSections: [SectionGroup] {
-        let sortedSteps = project.guideSteps.sorted(by: { $0.orderIndex < $1.orderIndex })
         var orderedTitles: [String] = []
         for step in sortedSteps {
             if !orderedTitles.contains(step.sectionTitle) {
@@ -41,7 +50,7 @@ struct GuideView: View {
                     ContentUnavailableView {
                         Label("Nessuna Guida", systemImage: "sparkles")
                     } description: {
-                        Text("Genera una guida interattiva passo-passo dal PDF del pattern con Gemini AI.")
+                        Text("Carica la guida del No Frills Sweater o generane una nuova da PDF con Gemini.")
                     } actions: {
                         VStack(spacing: 12) {
                             Button {
@@ -66,30 +75,69 @@ struct GuideView: View {
                         .padding(.horizontal, 24)
                     }
                 } else {
-                    List {
-                        ForEach(orderedSections) { group in
-                            Section(header: Text(group.title).font(.headline)) {
-                                ForEach(group.steps) { step in
-                                    GuideStepRow(step: step) { page in
-                                        onSelectPdfPage(page)
+                    VStack(spacing: 0) {
+                        // Picker visualizzazione Card / Elenco
+                        Picker("Modalità", selection: $displayMode) {
+                            ForEach(GuideDisplayMode.allCases, id: \.self) { mode in
+                                Text(mode.rawValue).tag(mode)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                        .padding(.horizontal)
+                        .padding(.top, 8)
+                        .padding(.bottom, 12)
+                        
+                        if displayMode == .card {
+                            // Modalità Scheda Singola (Focus Mode alla LooseLoop)
+                            GuideSingleCardView(
+                                steps: sortedSteps,
+                                currentIndex: $currentStepIndex,
+                                onNavigateToPage: onSelectPdfPage
+                            )
+                        } else {
+                            // Modalità Elenco Completo
+                            List {
+                                ForEach(orderedSections) { group in
+                                    Section(header: Text(group.title).font(.headline)) {
+                                        ForEach(group.steps) { step in
+                                            GuideStepRow(step: step) { page in
+                                                onSelectPdfPage(page)
+                                            }
+                                        }
                                     }
                                 }
                             }
+                            .listStyle(.insetGrouped)
                         }
                     }
-                    .listStyle(.insetGrouped)
                 }
             }
-            .navigationTitle("Guida Passo-Passo")
+            .navigationTitle(displayMode == .card && !project.guideSteps.isEmpty ? "Guida Attiva" : "Guida Passo-Passo")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 if !project.guideSteps.isEmpty {
                     ToolbarItem(placement: .topBarTrailing) {
-                        Button {
-                            showingGenerateSheet = true
+                        Menu {
+                            Button {
+                                loadPreloadedGuide()
+                            } label: {
+                                Label("Ricarica Guida No Frills (M)", systemImage: "arrow.counterclockwise")
+                            }
+                            Button {
+                                showingGenerateSheet = true
+                            } label: {
+                                Label("Rigenera con Gemini AI", systemImage: "sparkles")
+                            }
                         } label: {
-                            Label("Rigenera", systemImage: "arrow.triangle.2.circlepath")
+                            Image(systemName: "ellipsis.circle")
                         }
                     }
+                }
+            }
+            .onAppear {
+                // Posizionati automaticamente sulla prima card non completata
+                if let firstIncomplete = sortedSteps.firstIndex(where: { !$0.isCompleted }) {
+                    currentStepIndex = firstIncomplete
                 }
             }
             .sheet(isPresented: $showingGenerateSheet) {
@@ -127,16 +175,316 @@ struct GuideView: View {
                     targetMeasureCm: stepData.targetMeasureCm,
                     sourcePage: stepData.sourcePage,
                     sourceQuote: stepData.sourceQuote,
-                    orderIndex: stepOrder
+                    orderIndex: stepOrder,
+                    targetStepCount: stepData.targetStepCount
                 )
                 step.project = project
                 project.guideSteps.append(step)
                 stepOrder += 1
             }
         }
+        currentStepIndex = 0
     }
 }
 
+// MARK: - Vista Card Singola con Contatore Integrato (Focus Mode)
+struct GuideSingleCardView: View {
+    let steps: [GuideStep]
+    @Binding var currentIndex: Int
+    var onNavigateToPage: (Int) -> Void
+    
+    private let haptic = UIImpactFeedbackGenerator(style: .medium)
+    private let successHaptic = UINotificationFeedbackGenerator()
+    
+    var currentStep: GuideStep? {
+        guard !steps.isEmpty, currentIndex >= 0, currentIndex < steps.count else { return nil }
+        return steps[currentIndex]
+    }
+    
+    var body: some View {
+        if let step = currentStep {
+            VStack(spacing: 16) {
+                // Indicatore di progresso in alto
+                VStack(spacing: 6) {
+                    HStack {
+                        Text(step.sectionTitle.uppercased())
+                            .font(.caption.bold())
+                            .foregroundColor(.accentColor)
+                        
+                        Spacer()
+                        
+                        Text("Passo \(currentIndex + 1) di \(steps.count)")
+                            .font(.caption.monospacedDigit())
+                            .foregroundColor(.secondary)
+                    }
+                    
+                    ProgressView(value: Double(currentIndex + 1), total: Double(steps.count))
+                        .tint(.accentColor)
+                }
+                .padding(.horizontal, 20)
+                
+                // La Card Principale
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 18) {
+                        // Badge superiore
+                        HStack {
+                            if let page = step.sourcePage {
+                                Button {
+                                    onNavigateToPage(page)
+                                } label: {
+                                    HStack(spacing: 4) {
+                                        Image(systemName: "doc.text")
+                                        Text("PDF Pagina \(page)")
+                                    }
+                                    .font(.caption.bold())
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 5)
+                                    .background(Color.orange.opacity(0.15))
+                                    .foregroundColor(.orange)
+                                    .clipShape(Capsule())
+                                }
+                                .buttonStyle(.plain)
+                            }
+                            
+                            Spacer()
+                            
+                            if step.isCompleted {
+                                Label("Completato", systemImage: "checkmark.circle.fill")
+                                    .font(.caption.bold())
+                                    .foregroundColor(.green)
+                            }
+                        }
+                        
+                        // Testo Istruzione
+                        Text(step.instructionText)
+                            .font(.system(size: 20, weight: .medium, design: .rounded))
+                            .lineSpacing(6)
+                            .foregroundColor(.primary)
+                        
+                        // Metriche di riferimento
+                        HStack(spacing: 12) {
+                            if let sts = step.stitchCountAfter {
+                                Label("\(sts) maglie totali", systemImage: "number")
+                                    .font(.subheadline.bold())
+                                    .foregroundColor(.blue)
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 6)
+                                    .background(Color.blue.opacity(0.1))
+                                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                            }
+                            
+                            if let measure = step.targetMeasureCm {
+                                Label("Misura: \(String(format: "%.1f", measure)) cm", systemImage: "ruler")
+                                    .font(.subheadline.bold())
+                                    .foregroundColor(.purple)
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 6)
+                                    .background(Color.purple.opacity(0.1))
+                                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                            }
+                        }
+                        
+                        Divider()
+                            .padding(.vertical, 4)
+                        
+                        // SEZIONE CONTATORE INTEGRATO NELLA CARD
+                        CardCounterBoxView(step: step)
+                    }
+                    .padding(22)
+                    .background(Color(.secondarySystemGroupedBackground))
+                    .cornerRadius(24)
+                    .shadow(color: Color.black.opacity(0.06), radius: 12, x: 0, y: 4)
+                    .padding(.horizontal, 16)
+                }
+                
+                // Barra di Navigazione Inferiore
+                HStack(spacing: 14) {
+                    // Pulsante Precedente
+                    Button {
+                        if currentIndex > 0 {
+                            withAnimation(.easeInOut(duration: 0.25)) {
+                                currentIndex -= 1
+                            }
+                        }
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "chevron.left")
+                            Text("Indietro")
+                        }
+                        .font(.headline)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background(Color(.systemGray6))
+                        .foregroundColor(currentIndex > 0 ? .primary : .secondary.opacity(0.5))
+                        .clipShape(RoundedRectangle(cornerRadius: 16))
+                    }
+                    .disabled(currentIndex == 0)
+                    
+                    // Pulsante Completa / Prossimo
+                    Button {
+                        haptic.impactOccurred()
+                        step.isCompleted = true
+                        if currentIndex < steps.count - 1 {
+                            withAnimation(.easeInOut(duration: 0.25)) {
+                                currentIndex += 1
+                            }
+                        } else {
+                            successHaptic.notificationOccurred(.success)
+                        }
+                    } label: {
+                        HStack(spacing: 6) {
+                            Text(currentIndex < steps.count - 1 ? "Completato e Avanti" : "Finito!")
+                            Image(systemName: currentIndex < steps.count - 1 ? "chevron.right" : "sparkles")
+                        }
+                        .font(.headline.bold())
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background(Color.accentColor)
+                        .foregroundColor(.white)
+                        .clipShape(RoundedRectangle(cornerRadius: 16))
+                        .shadow(color: Color.accentColor.opacity(0.3), radius: 6, x: 0, y: 3)
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.bottom, 12)
+            }
+        }
+    }
+}
+
+// MARK: - Box Contatore Speciale della Card
+struct CardCounterBoxView: View {
+    @Bindable var step: GuideStep
+    private let haptic = UIImpactFeedbackGenerator(style: .medium)
+    private let successHaptic = UINotificationFeedbackGenerator()
+    
+    var effectiveTarget: Int? {
+        if let target = step.targetStepCount, target > 0 {
+            return target
+        }
+        if step.instructionText.lowercased().contains("avviare") || step.instructionText.lowercased().contains("avvia"),
+           let sts = step.stitchCountAfter {
+            return sts
+        }
+        return nil
+    }
+    
+    var isTargetReached: Bool {
+        if let target = effectiveTarget {
+            return step.currentStepCount >= target
+        }
+        return false
+    }
+    
+    var body: some View {
+        VStack(spacing: 14) {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(counterTitle)
+                        .font(.subheadline.bold())
+                        .foregroundColor(.secondary)
+                    
+                    if let target = effectiveTarget {
+                        Text("Obiettivo: \(target)")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                }
+                
+                Spacer()
+                
+                if step.currentStepCount > 0 {
+                    Button("Azzera") {
+                        step.currentStepCount = 0
+                    }
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                }
+            }
+            
+            // Barra di avanzamento contatore
+            if let target = effectiveTarget {
+                let progress = min(Double(step.currentStepCount) / Double(target), 1.0)
+                ProgressView(value: progress)
+                    .tint(isTargetReached ? .green : .accentColor)
+            }
+            
+            // Display Contatore e Tasti - e +
+            HStack(spacing: 24) {
+                // Tasto Meno
+                Button {
+                    TimerManager.shared.registerInteraction()
+                    haptic.impactOccurred()
+                    if step.currentStepCount > 0 {
+                        step.currentStepCount -= 1
+                    }
+                } label: {
+                    Image(systemName: "minus")
+                        .font(.title3.bold())
+                        .foregroundColor(.primary)
+                        .frame(width: 48, height: 48)
+                        .background(Color(.systemGray5))
+                        .clipShape(Circle())
+                }
+                .disabled(step.currentStepCount == 0)
+                
+                Spacer()
+                
+                // Numero
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    Text("\(step.currentStepCount)")
+                        .font(.system(size: 46, weight: .bold, design: .rounded))
+                        .foregroundColor(isTargetReached ? .green : .primary)
+                    
+                    if let target = effectiveTarget {
+                        Text("/ \(target)")
+                            .font(.title2.bold())
+                            .foregroundColor(.secondary)
+                    }
+                }
+                .contentTransition(.numericText())
+                
+                Spacer()
+                
+                // Tasto Più Gigante
+                Button {
+                    TimerManager.shared.registerInteraction()
+                    haptic.impactOccurred()
+                    step.currentStepCount += 1
+                    if isTargetReached {
+                        successHaptic.notificationOccurred(.success)
+                    }
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.title2.bold())
+                        .foregroundColor(.white)
+                        .frame(width: 58, height: 58)
+                        .background(isTargetReached ? Color.green : Color.accentColor)
+                        .clipShape(Circle())
+                        .shadow(color: (isTargetReached ? Color.green : Color.accentColor).opacity(0.35), radius: 6, x: 0, y: 3)
+                }
+            }
+        }
+        .padding(16)
+        .background(Color(.tertiarySystemGroupedBackground))
+        .cornerRadius(18)
+    }
+    
+    private var counterTitle: String {
+        let txt = step.instructionText.lowercased()
+        if txt.contains("avviare") || txt.contains("avvia") {
+            return "Contatore Maglie Avviate"
+        } else if txt.contains("aumenti") || txt.contains("ripetere") {
+            return "Contatore Ripetizioni"
+        } else if txt.contains("diminuzion") || txt.contains("calatur") {
+            return "Contatore Calature"
+        } else {
+            return "Contatore Ferri della Card"
+        }
+    }
+}
+
+// MARK: - Step Row per Elenco Completo
 struct GuideStepRow: View {
     @Bindable var step: GuideStep
     var onNavigateToPage: (Int) -> Void
@@ -164,7 +512,7 @@ struct GuideStepRow: View {
                     if let sts = step.stitchCountAfter {
                         HStack(spacing: 4) {
                             Image(systemName: "number")
-                            Text("\(sts) maglie")
+                            Text("\(sts) m")
                         }
                         .font(.caption2.bold())
                         .padding(.horizontal, 8)
@@ -211,6 +559,7 @@ struct GuideStepRow: View {
     }
 }
 
+// MARK: - Sheet Generazione AI
 struct GenerateGuideSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
@@ -265,39 +614,6 @@ struct GenerateGuideSheet: View {
         }
     }
     
-    private func loadPreloadedGuide() {
-        guard let guideUrl = Bundle.main.url(forResource: "NoFrillsGuide_M", withExtension: "json"),
-              let guideData = try? Data(contentsOf: guideUrl),
-              let guide = try? JSONDecoder().decode(GeneratedGuideResponse.self, from: guideData) else {
-            errorMessage = "Guida di test non trovata nel bundle."
-            return
-        }
-        
-        project.selectedSize = "M"
-        for step in project.guideSteps {
-            modelContext.delete(step)
-        }
-        project.guideSteps.removeAll()
-        
-        var stepOrder = 0
-        for section in guide.sections {
-            for stepData in section.steps {
-                let step = GuideStep(
-                    sectionTitle: section.name,
-                    instructionText: stepData.instruction,
-                    stitchCountAfter: stepData.stitchCountAfter,
-                    targetMeasureCm: stepData.targetMeasureCm,
-                    sourcePage: stepData.sourcePage,
-                    sourceQuote: stepData.sourceQuote,
-                    orderIndex: stepOrder
-                )
-                step.project = project
-                project.guideSteps.append(step)
-                stepOrder += 1
-            }
-        }
-    }
-    
     private func generateGuide() {
         guard let pdfData = project.pdfData else {
             errorMessage = "Nessun PDF associato a questo progetto."
@@ -311,7 +627,6 @@ struct GenerateGuideSheet: View {
                 let response = try await GeminiService.shared.generateGuide(from: pdfData, targetSize: targetSize)
                 
                 await MainActor.run {
-                    // Update project details
                     project.selectedSize = targetSize
                     if project.title.isEmpty || project.title == "Nuovo Progetto" {
                         project.title = response.patternTitle
@@ -320,7 +635,6 @@ struct GenerateGuideSheet: View {
                         project.designer = designer
                     }
                     
-                    // Replace existing guide steps
                     for step in project.guideSteps {
                         modelContext.delete(step)
                     }
@@ -336,7 +650,8 @@ struct GenerateGuideSheet: View {
                                 targetMeasureCm: stepData.targetMeasureCm,
                                 sourcePage: stepData.sourcePage,
                                 sourceQuote: stepData.sourceQuote,
-                                orderIndex: stepOrder
+                                orderIndex: stepOrder,
+                                targetStepCount: stepData.targetStepCount
                             )
                             step.project = project
                             project.guideSteps.append(step)

@@ -32,13 +32,15 @@
           "instruction": "Avviare 114 maglie sui ferri circolari da 3 mm / 40 cm. Unire in tondo e posizionare un marcatore per l'inizio del giro.",
           "stitchCountAfter": 114,
           "targetMeasureCm": null,
-          "sourcePage": 2
+          "sourcePage": 2,
+          "targetStepCount": 114
         },
         {
           "instruction": "Lavorare 4 cm a coste 1/1.",
           "stitchCountAfter": 114,
           "targetMeasureCm": 4,
-          "sourcePage": 2
+          "sourcePage": 2,
+          "targetStepCount": null
         },
         {
           "instruction": "Passare ai ferri circolari da 4 mm / 40 cm lavorando le maglie sui nuovi ferri.",
@@ -86,13 +88,15 @@
           "instruction": "Ripetere i Passi 1-4 per altre 4 volte, ma ogni volta il giro accorciato viene lavorato più vicino al centro del davanti del maglione (lavorare la maglia di ritorno dall'ultimo giro, poi lavorare 2 maglie, poi 3 maglie, poi di nuovo 3 maglie, e poi 4 maglie in più verso il centro del davanti prima di girare ancora una volta).",
           "stitchCountAfter": 154,
           "targetMeasureCm": null,
-          "sourcePage": 3
+          "sourcePage": 3,
+          "targetStepCount": 4
         },
         {
           "instruction": "Continuare a lavorare in tondo a maglia rasata, eseguendo contemporaneamente aumenti raglan ogni altro giro, come segue: *Lavorare a dir il lato destro del dietro, AID, lavorare a dir la maglia raglan, AIS, lavorare a dir la manica destra, AID, lavorare a dir la maglia raglan, AIS, lavorare a dir il davanti, AID, lavorare a dir la maglia raglan, AIS, lavorare a dir la manica sinistra, AID, lavorare a dir la maglia raglan, AIS, lavorare a dir il lato sinistro del dietro (8 maglie aumentate). Lavorare a dir 1 giro.* Ripetere da * a * per un totale di 29 volte.",
           "stitchCountAfter": 386,
           "targetMeasureCm": null,
-          "sourcePage": 3
+          "sourcePage": 3,
+          "targetStepCount": 29
         },
         {
           "instruction": "Passare a un ferro circolare più lungo per accomodare il numero crescente di maglie.",
@@ -109,7 +113,8 @@
           "instruction": "Dividere le maglie per le maniche e il corpo, e contemporaneamente avviare nuove maglie sotto ogni sottomanica, come segue: Lavorare a dir 54 maglie (lato destro del dietro), lavorare a dir la maglia raglan, mettere le successive 83 maglie (manica destra) in sospeso su un ferma maglie o un pezzo di filo, avviare 4 nuove maglie al sottomanica usando il metodo backward loop, lavorare a dir la maglia raglan, lavorare a dir 108 maglie (davanti), lavorare a dir la maglia raglan, mettere le successive 83 maglie (manica sinistra) in sospeso su un ferma maglie o un pezzo di filo, avviare 4 nuove maglie al sottomanica usando il metodo backward loop, lavorare a dir la maglia raglan, lavorare a dir 54 maglie (lato sinistro del dietro).",
           "stitchCountAfter": 228,
           "targetMeasureCm": null,
-          "sourcePage": 4
+          "sourcePage": 4,
+          "targetStepCount": 4
         },
         {
           "instruction": "Posizionare un marcatore per l'inizio del giro al centro delle nuove maglie avviate al sottomanica destro.",
@@ -127,7 +132,8 @@
           "instruction": "Lavorare le diminuzioni nel giro successivo, come segue: *dir 7, 2 dir ins*, ripetere da * a * per un totale di 25 volte, lavorare a dir 1 maglia, lavorare 2 dir ins 1 altra volta.",
           "stitchCountAfter": 202,
           "targetMeasureCm": null,
-          "sourcePage": 4
+          "sourcePage": 4,
+          "targetStepCount": 25
         },
         {
           "instruction": "Cambiare ai ferri da 3 mm e lavorare 7 cm a coste 1/1 per tutte le taglie.",
@@ -168,7 +174,8 @@
           "instruction": "Lavorare in tondo a maglia rasata fino a quando la manica misura 39 cm, eseguendo contemporaneamente diminuzioni ogni 6° giro per un totale di 18 volte. Il giro di diminuzione è il seguente: 2 dir ins, lavorare a dir fino alle ultime 2 maglie del giro, 2 dir ins ritorto.",
           "stitchCountAfter": 51,
           "targetMeasureCm": 39,
-          "sourcePage": 5
+          "sourcePage": 5,
+          "targetStepCount": 18
         },
         {
           "instruction": "Ridurre il numero di maglie a 48 diminuendo uniformemente nel giro successivo, se necessario.",
