@@ -9,19 +9,28 @@
           "instruction": "Verificare il campione: 21 maglie x 28 ferri in maglia rasata su ferri da 4 mm = 10 x 10 cm, dopo il bloccaggio.",
           "stitchCountAfter": null,
           "targetMeasureCm": null,
-          "sourcePage": 1
+          "sourcePage": 1,
+          "hasCounter": false,
+          "counterLabel": null,
+          "targetStepCount": null
         },
         {
           "instruction": "Materiali: Ferri circolari da 3 mm e 4 mm (40 e 80 o 100 cm). Ferri a doppia punta da 3 mm e 4 mm.",
           "stitchCountAfter": null,
           "targetMeasureCm": null,
-          "sourcePage": 1
+          "sourcePage": 1,
+          "hasCounter": false,
+          "counterLabel": null,
+          "targetStepCount": null
         },
         {
           "instruction": "Filato: 300 g Sunday by Sandnes Garn (50 g = 235 m) o Arwetta by Filcolana (50 g = 210 m) tenuti insieme a 150 g Tilia by Filcolana (25 g = 210 m) o Tynn Silk Mohair by Sandnes Garn (25 g = 212 m).",
           "stitchCountAfter": null,
           "targetMeasureCm": null,
-          "sourcePage": 1
+          "sourcePage": 1,
+          "hasCounter": false,
+          "counterLabel": null,
+          "targetStepCount": null
         }
       ]
     },
@@ -33,76 +42,108 @@
           "stitchCountAfter": 114,
           "targetMeasureCm": null,
           "sourcePage": 2,
-          "targetStepCount": 114
+          "targetStepCount": 114,
+          "hasCounter": true,
+          "counterLabel": "Maglie Avviate"
         },
         {
           "instruction": "Lavorare 4 cm a coste 1/1.",
           "stitchCountAfter": 114,
           "targetMeasureCm": 4,
           "sourcePage": 2,
-          "targetStepCount": null
+          "targetStepCount": null,
+          "hasCounter": false,
+          "counterLabel": null
         },
         {
           "instruction": "Passare ai ferri circolari da 4 mm / 40 cm lavorando le maglie sui nuovi ferri.",
           "stitchCountAfter": 114,
           "targetMeasureCm": null,
-          "sourcePage": 3
+          "sourcePage": 3,
+          "hasCounter": false,
+          "counterLabel": null,
+          "targetStepCount": null
         },
         {
           "instruction": "Dividere il lavoro per gli aumenti raglan posizionando i marcatori ai lati di ogni maglia raglan (8 marcatori in totale). Dividere come segue: 20 maglie (lato destro del dietro), posizionare marcatore, 1 maglia raglan, posizionare marcatore, 15 maglie (manica destra), posizionare marcatore, 1 maglia raglan, posizionare marcatore, 40 maglie (davanti), posizionare marcatore, 1 maglia raglan, posizionare marcatore, 15 maglie (manica sinistra), posizionare marcatore, 1 maglia raglan, posizionare marcatore, 20 maglie (lato sinistro del dietro). Il marcatore di inizio giro si trova a metà schiena/collo.",
           "stitchCountAfter": 114,
           "targetMeasureCm": null,
-          "sourcePage": 3
+          "sourcePage": 3,
+          "hasCounter": false,
+          "counterLabel": null,
+          "targetStepCount": null
         },
         {
           "instruction": "Lavorare i ferri accorciati alla tedesca per modellare lo scollo, eseguendo contemporaneamente gli aumenti raglan. Seguire i passaggi:",
           "stitchCountAfter": null,
           "targetMeasureCm": null,
-          "sourcePage": 3
+          "sourcePage": 3,
+          "hasCounter": false,
+          "counterLabel": null,
+          "targetStepCount": null
         },
         {
           "instruction": "Passo 1 (dir): Lavorare a dir il lato destro del dietro, AID, lavorare a dir la maglia raglan, AIS, lavorare a dir la manica destra, AID, lavorare a dir la maglia raglan, AIS, 2 dir. Girare.",
           "stitchCountAfter": null,
           "targetMeasureCm": null,
-          "sourcePage": 3
+          "sourcePage": 3,
+          "hasCounter": false,
+          "counterLabel": null,
+          "targetStepCount": null
         },
         {
           "instruction": "Passo 2 (rov): Lavorare a rov fino al marcatore di inizio giro a metà dietro.",
           "stitchCountAfter": null,
           "targetMeasureCm": null,
-          "sourcePage": 3
+          "sourcePage": 3,
+          "hasCounter": false,
+          "counterLabel": null,
+          "targetStepCount": null
         },
         {
           "instruction": "Passo 3 (rov): Lavorare a rov il lato sinistro del dietro, AID, lavorare a rov la maglia raglan, AIS, lavorare a rov la manica sinistra, AID, lavorare a rov la maglia raglan, AIS, 2 rov. Girare.",
           "stitchCountAfter": null,
           "targetMeasureCm": null,
-          "sourcePage": 3
+          "sourcePage": 3,
+          "hasCounter": false,
+          "counterLabel": null,
+          "targetStepCount": null
         },
         {
           "instruction": "Passo 4 (dir): Lavorare a dir fino al marcatore di inizio giro a metà dietro. Sono state aumentate 8 maglie in questi 4 passaggi.",
           "stitchCountAfter": 122,
           "targetMeasureCm": null,
-          "sourcePage": 3
+          "sourcePage": 3,
+          "hasCounter": false,
+          "counterLabel": null,
+          "targetStepCount": null
         },
         {
           "instruction": "Ripetere i Passi 1-4 per altre 4 volte, ma ogni volta il giro accorciato viene lavorato più vicino al centro del davanti del maglione (lavorare la maglia di ritorno dall'ultimo giro, poi lavorare 2 maglie, poi 3 maglie, poi di nuovo 3 maglie, e poi 4 maglie in più verso il centro del davanti prima di girare ancora una volta).",
           "stitchCountAfter": 154,
           "targetMeasureCm": null,
           "sourcePage": 3,
-          "targetStepCount": 4
+          "targetStepCount": 4,
+          "hasCounter": true,
+          "counterLabel": "Serie Ferri Accorciati"
         },
         {
           "instruction": "Continuare a lavorare in tondo a maglia rasata, eseguendo contemporaneamente aumenti raglan ogni altro giro, come segue: *Lavorare a dir il lato destro del dietro, AID, lavorare a dir la maglia raglan, AIS, lavorare a dir la manica destra, AID, lavorare a dir la maglia raglan, AIS, lavorare a dir il davanti, AID, lavorare a dir la maglia raglan, AIS, lavorare a dir la manica sinistra, AID, lavorare a dir la maglia raglan, AIS, lavorare a dir il lato sinistro del dietro (8 maglie aumentate). Lavorare a dir 1 giro.* Ripetere da * a * per un totale di 29 volte.",
           "stitchCountAfter": 386,
           "targetMeasureCm": null,
           "sourcePage": 3,
-          "targetStepCount": 29
+          "targetStepCount": 29,
+          "hasCounter": true,
+          "counterLabel": "Giri di Aumenti Raglan"
         },
         {
           "instruction": "Passare a un ferro circolare più lungo per accomodare il numero crescente di maglie.",
           "stitchCountAfter": 386,
           "targetMeasureCm": null,
-          "sourcePage": 4
+          "sourcePage": 4,
+          "hasCounter": false,
+          "counterLabel": null,
+          "targetStepCount": null
         }
       ]
     },
@@ -114,38 +155,54 @@
           "stitchCountAfter": 228,
           "targetMeasureCm": null,
           "sourcePage": 4,
-          "targetStepCount": 4
+          "targetStepCount": null,
+          "hasCounter": false,
+          "counterLabel": null
         },
         {
           "instruction": "Posizionare un marcatore per l'inizio del giro al centro delle nuove maglie avviate al sottomanica destro.",
           "stitchCountAfter": 228,
           "targetMeasureCm": null,
-          "sourcePage": 4
+          "sourcePage": 4,
+          "hasCounter": false,
+          "counterLabel": null,
+          "targetStepCount": null
         },
         {
           "instruction": "Lavorare in tondo a maglia rasata fino a quando il maglione misura 48 cm a metà schiena, misurati dal bordo di avvio.",
           "stitchCountAfter": 228,
           "targetMeasureCm": 48,
-          "sourcePage": 4
+          "sourcePage": 4,
+          "hasCounter": false,
+          "counterLabel": null,
+          "targetStepCount": null
         },
         {
           "instruction": "Lavorare le diminuzioni nel giro successivo, come segue: *dir 7, 2 dir ins*, ripetere da * a * per un totale di 25 volte, lavorare a dir 1 maglia, lavorare 2 dir ins 1 altra volta.",
           "stitchCountAfter": 202,
           "targetMeasureCm": null,
           "sourcePage": 4,
-          "targetStepCount": 25
+          "targetStepCount": 25,
+          "hasCounter": true,
+          "counterLabel": "Diminuzioni Fondo Corpo"
         },
         {
           "instruction": "Cambiare ai ferri da 3 mm e lavorare 7 cm a coste 1/1 per tutte le taglie.",
           "stitchCountAfter": 202,
           "targetMeasureCm": 7,
-          "sourcePage": 4
+          "sourcePage": 4,
+          "hasCounter": false,
+          "counterLabel": null,
+          "targetStepCount": null
         },
         {
           "instruction": "Intrecciare le maglie seguendo il motivo a coste stabilito.",
           "stitchCountAfter": null,
           "targetMeasureCm": null,
-          "sourcePage": 4
+          "sourcePage": 4,
+          "hasCounter": false,
+          "counterLabel": null,
+          "targetStepCount": null
         }
       ]
     },
@@ -156,50 +213,73 @@
           "instruction": "Le maniche sono lavorate in tondo su ferri a doppia punta da 4 mm o su ferri circolari usando la tecnica Magic Loop. Riprendere le 83 maglie che erano state messe in sospeso per una manica sui ferri.",
           "stitchCountAfter": 83,
           "targetMeasureCm": null,
-          "sourcePage": 4
+          "sourcePage": 4,
+          "hasCounter": false,
+          "counterLabel": null,
+          "targetStepCount": null
         },
         {
           "instruction": "Raccogliere e lavorare a dir 4 maglie lungo le 4 maglie che sono state avviate al sottomanica per il corpo.",
           "stitchCountAfter": 87,
           "targetMeasureCm": null,
-          "sourcePage": 4
+          "sourcePage": 4,
+          "hasCounter": false,
+          "counterLabel": null,
+          "targetStepCount": null
         },
         {
           "instruction": "Posizionare un marcatore per l'inizio del giro al centro delle 4 maglie del sottomanica.",
           "stitchCountAfter": 87,
           "targetMeasureCm": null,
-          "sourcePage": 5
+          "sourcePage": 5,
+          "hasCounter": false,
+          "counterLabel": null,
+          "targetStepCount": null
         },
         {
           "instruction": "Lavorare in tondo a maglia rasata fino a quando la manica misura 39 cm, eseguendo contemporaneamente diminuzioni ogni 6° giro per un totale di 18 volte. Il giro di diminuzione è il seguente: 2 dir ins, lavorare a dir fino alle ultime 2 maglie del giro, 2 dir ins ritorto.",
           "stitchCountAfter": 51,
           "targetMeasureCm": 39,
           "sourcePage": 5,
-          "targetStepCount": 18
+          "targetStepCount": 18,
+          "hasCounter": true,
+          "counterLabel": "Calature Manica"
         },
         {
           "instruction": "Ridurre il numero di maglie a 48 diminuendo uniformemente nel giro successivo, se necessario.",
           "stitchCountAfter": 48,
           "targetMeasureCm": null,
-          "sourcePage": 5
+          "sourcePage": 5,
+          "hasCounter": false,
+          "counterLabel": null,
+          "targetStepCount": null
         },
         {
           "instruction": "Cambiare ai ferri da 3 mm e lavorare 7 cm a coste 1/1 per tutte le taglie.",
           "stitchCountAfter": 48,
           "targetMeasureCm": 7,
-          "sourcePage": 5
+          "sourcePage": 5,
+          "hasCounter": false,
+          "counterLabel": null,
+          "targetStepCount": null
         },
         {
           "instruction": "Intrecciare le maglie seguendo il motivo a coste stabilito.",
           "stitchCountAfter": null,
           "targetMeasureCm": null,
-          "sourcePage": 5
+          "sourcePage": 5,
+          "hasCounter": false,
+          "counterLabel": null,
+          "targetStepCount": null
         },
         {
           "instruction": "Lavorare l'altra manica in modo identico e nascondere tutte le estremità del filo.",
           "stitchCountAfter": null,
           "targetMeasureCm": null,
-          "sourcePage": 5
+          "sourcePage": 5,
+          "hasCounter": false,
+          "counterLabel": null,
+          "targetStepCount": null
         }
       ]
     }

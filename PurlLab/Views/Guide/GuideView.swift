@@ -76,7 +76,7 @@ struct GuideView: View {
                     }
                 } else {
                     VStack(spacing: 0) {
-                        // Picker visualizzazione Card / Elenco
+                        // Selettore Card Singola / Elenco
                         Picker("Modalità", selection: $displayMode) {
                             ForEach(GuideDisplayMode.allCases, id: \.self) { mode in
                                 Text(mode.rawValue).tag(mode)
@@ -88,7 +88,7 @@ struct GuideView: View {
                         .padding(.bottom, 12)
                         
                         if displayMode == .card {
-                            // Modalità Scheda Singola (Focus Mode alla LooseLoop)
+                            // Modalità Scheda Singola (Focus Mode)
                             GuideSingleCardView(
                                 steps: sortedSteps,
                                 currentIndex: $currentStepIndex,
@@ -135,7 +135,6 @@ struct GuideView: View {
                 }
             }
             .onAppear {
-                // Posizionati automaticamente sulla prima card non completata
                 if let firstIncomplete = sortedSteps.firstIndex(where: { !$0.isCompleted }) {
                     currentStepIndex = firstIncomplete
                 }
@@ -176,6 +175,9 @@ struct GuideView: View {
                     sourcePage: stepData.sourcePage,
                     sourceQuote: stepData.sourceQuote,
                     orderIndex: stepOrder,
+                    hasCounter: stepData.hasCounter ?? false,
+                    counterLabel: stepData.counterLabel,
+                    currentStepCount: 0,
                     targetStepCount: stepData.targetStepCount
                 )
                 step.project = project
@@ -187,12 +189,13 @@ struct GuideView: View {
     }
 }
 
-// MARK: - Vista Card Singola con Contatore Integrato (Focus Mode)
+// MARK: - Vista Card Singola con Contatore Intelligente
 struct GuideSingleCardView: View {
     let steps: [GuideStep]
     @Binding var currentIndex: Int
     var onNavigateToPage: (Int) -> Void
     
+    @State private var showingEditSheet = false
     private let haptic = UIImpactFeedbackGenerator(style: .medium)
     private let successHaptic = UINotificationFeedbackGenerator()
     
@@ -226,7 +229,7 @@ struct GuideSingleCardView: View {
                 // La Card Principale
                 ScrollView {
                     VStack(alignment: .leading, spacing: 18) {
-                        // Badge superiore
+                        // Badge superiore e tasto Modifica
                         HStack {
                             if let page = step.sourcePage {
                                 Button {
@@ -248,8 +251,25 @@ struct GuideSingleCardView: View {
                             
                             Spacer()
                             
+                            // Tasto Modifica Testo
+                            Button {
+                                showingEditSheet = true
+                            } label: {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "pencil")
+                                    Text("Modifica")
+                                }
+                                .font(.caption.bold())
+                                .foregroundColor(.secondary)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(Color(.systemGray5))
+                                .clipShape(Capsule())
+                            }
+                            .buttonStyle(.plain)
+                            
                             if step.isCompleted {
-                                Label("Completato", systemImage: "checkmark.circle.fill")
+                                Label("Fatto", systemImage: "checkmark.circle.fill")
                                     .font(.caption.bold())
                                     .foregroundColor(.green)
                             }
@@ -261,7 +281,7 @@ struct GuideSingleCardView: View {
                             .lineSpacing(6)
                             .foregroundColor(.primary)
                         
-                        // Metriche di riferimento
+                        // Metriche di riferimento (maglie, centimetri)
                         HStack(spacing: 12) {
                             if let sts = step.stitchCountAfter {
                                 Label("\(sts) maglie totali", systemImage: "number")
@@ -284,11 +304,13 @@ struct GuideSingleCardView: View {
                             }
                         }
                         
-                        Divider()
-                            .padding(.vertical, 4)
-                        
-                        // SEZIONE CONTATORE INTEGRATO NELLA CARD
-                        CardCounterBoxView(step: step)
+                        // MOSTRA IL CONTATORE SOLO SE QUESTA CARD LO RICHIEDE
+                        if step.hasCounter {
+                            Divider()
+                                .padding(.vertical, 4)
+                            
+                            CardCounterBoxView(step: step)
+                        }
                     }
                     .padding(22)
                     .background(Color(.secondarySystemGroupedBackground))
@@ -348,29 +370,25 @@ struct GuideSingleCardView: View {
                 .padding(.horizontal, 16)
                 .padding(.bottom, 12)
             }
+            .sheet(isPresented: $showingEditSheet) {
+                EditGuideStepSheet(step: step)
+            }
         }
     }
 }
 
-// MARK: - Box Contatore Speciale della Card
+// MARK: - Box Contatore Integrato
 struct CardCounterBoxView: View {
     @Bindable var step: GuideStep
     private let haptic = UIImpactFeedbackGenerator(style: .medium)
     private let successHaptic = UINotificationFeedbackGenerator()
     
     var effectiveTarget: Int? {
-        if let target = step.targetStepCount, target > 0 {
-            return target
-        }
-        if step.instructionText.lowercased().contains("avviare") || step.instructionText.lowercased().contains("avvia"),
-           let sts = step.stitchCountAfter {
-            return sts
-        }
-        return nil
+        step.targetStepCount
     }
     
     var isTargetReached: Bool {
-        if let target = effectiveTarget {
+        if let target = effectiveTarget, target > 0 {
             return step.currentStepCount >= target
         }
         return false
@@ -380,7 +398,7 @@ struct CardCounterBoxView: View {
         VStack(spacing: 14) {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(counterTitle)
+                    Text(step.counterLabel ?? "Contatore")
                         .font(.subheadline.bold())
                         .foregroundColor(.secondary)
                     
@@ -402,8 +420,8 @@ struct CardCounterBoxView: View {
                 }
             }
             
-            // Barra di avanzamento contatore
-            if let target = effectiveTarget {
+            // Barra di avanzamento
+            if let target = effectiveTarget, target > 0 {
                 let progress = min(Double(step.currentStepCount) / Double(target), 1.0)
                 ProgressView(value: progress)
                     .tint(isTargetReached ? .green : .accentColor)
@@ -469,25 +487,84 @@ struct CardCounterBoxView: View {
         .background(Color(.tertiarySystemGroupedBackground))
         .cornerRadius(18)
     }
+}
+
+// MARK: - Foglio per Modificare il Testo e il Contatore della Card
+struct EditGuideStepSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @Bindable var step: GuideStep
     
-    private var counterTitle: String {
-        let txt = step.instructionText.lowercased()
-        if txt.contains("avviare") || txt.contains("avvia") {
-            return "Contatore Maglie Avviate"
-        } else if txt.contains("aumenti") || txt.contains("ripetere") {
-            return "Contatore Ripetizioni"
-        } else if txt.contains("diminuzion") || txt.contains("calatur") {
-            return "Contatore Calature"
-        } else {
-            return "Contatore Ferri della Card"
+    @State private var editedText: String = ""
+    @State private var hasCounter: Bool = false
+    @State private var counterLabel: String = ""
+    @State private var targetCountString: String = ""
+    @State private var targetMeasureString: String = ""
+    
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Testo Istruzione") {
+                    TextEditor(text: $editedText)
+                        .frame(minHeight: 120)
+                }
+                
+                Section("Contatore per questa Card") {
+                    Toggle("Mostra contatore", isOn: $hasCounter)
+                    
+                    if hasCounter {
+                        TextField("Nome contatore (es. Maglie, Ripetizioni)", text: $counterLabel)
+                        TextField("Obiettivo numerico (es. 114)", text: $targetCountString)
+                            .keyboardType(.numberPad)
+                    }
+                }
+                
+                Section("Misure e Pagine") {
+                    TextField("Misura in cm (opzionale, es. 4.0)", text: $targetMeasureString)
+                        .keyboardType(.decimalPad)
+                }
+            }
+            .navigationTitle("Modifica Passaggio")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Annulla") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Salva") {
+                        saveChanges()
+                        dismiss()
+                    }
+                    .bold()
+                }
+            }
+            .onAppear {
+                editedText = step.instructionText
+                hasCounter = step.hasCounter
+                counterLabel = step.counterLabel ?? ""
+                if let target = step.targetStepCount {
+                    targetCountString = "\(target)"
+                }
+                if let measure = step.targetMeasureCm {
+                    targetMeasureString = "\(measure)"
+                }
+            }
         }
+    }
+    
+    private func saveChanges() {
+        step.instructionText = editedText
+        step.hasCounter = hasCounter
+        step.counterLabel = counterLabel.isEmpty ? nil : counterLabel
+        step.targetStepCount = Int(targetCountString)
+        step.targetMeasureCm = Double(targetMeasureString.replacingOccurrences(of: ",", with: "."))
     }
 }
 
-// MARK: - Step Row per Elenco Completo
+// MARK: - Riga Elenco Completo
 struct GuideStepRow: View {
     @Bindable var step: GuideStep
     var onNavigateToPage: (Int) -> Void
+    @State private var showingEditSheet = false
     
     var body: some View {
         HStack(alignment: .top, spacing: 14) {
@@ -509,6 +586,19 @@ struct GuideStepRow: View {
                     .strikethrough(step.isCompleted, color: .secondary)
                 
                 HStack(spacing: 8) {
+                    if step.hasCounter {
+                        HStack(spacing: 4) {
+                            Image(systemName: "number.circle.fill")
+                            Text(step.counterLabel ?? "Contatore")
+                        }
+                        .font(.caption2.bold())
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(Color.green.opacity(0.12))
+                        .foregroundColor(.green)
+                        .clipShape(Capsule())
+                    }
+                    
                     if let sts = step.stitchCountAfter {
                         HStack(spacing: 4) {
                             Image(systemName: "number")
@@ -554,8 +644,22 @@ struct GuideStepRow: View {
                     }
                 }
             }
+            
+            Spacer()
+            
+            Button {
+                showingEditSheet = true
+            } label: {
+                Image(systemName: "pencil")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            .buttonStyle(.plain)
         }
         .padding(.vertical, 4)
+        .sheet(isPresented: $showingEditSheet) {
+            EditGuideStepSheet(step: step)
+        }
     }
 }
 
@@ -651,6 +755,9 @@ struct GenerateGuideSheet: View {
                                 sourcePage: stepData.sourcePage,
                                 sourceQuote: stepData.sourceQuote,
                                 orderIndex: stepOrder,
+                                hasCounter: stepData.hasCounter ?? false,
+                                counterLabel: stepData.counterLabel,
+                                currentStepCount: 0,
                                 targetStepCount: stepData.targetStepCount
                             )
                             step.project = project

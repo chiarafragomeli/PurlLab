@@ -167,6 +167,8 @@ struct ProjectListView: View {
                         sourcePage: stepData.sourcePage,
                         sourceQuote: stepData.sourceQuote,
                         orderIndex: stepOrder,
+                        hasCounter: stepData.hasCounter ?? (stepData.targetStepCount != nil && stepData.targetStepCount! > 0),
+                        counterLabel: stepData.counterLabel,
                         targetStepCount: stepData.targetStepCount
                     )
                     step.project = project

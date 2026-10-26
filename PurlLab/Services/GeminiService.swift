@@ -18,6 +18,8 @@ struct GeneratedStep: Codable {
     let instruction: String
     let stitchCountAfter: Int?
     let targetMeasureCm: Double?
+    let hasCounter: Bool?
+    let counterLabel: String?
     let targetStepCount: Int?
     let sourcePage: Int?
     let sourceQuote: String?
@@ -93,6 +95,9 @@ final class GeminiService: @unchecked Sendable {
            - instruction: testo chiaro in italiano
            - stitchCountAfter: numero totale di maglie sul ferro al termine dello step (se applicabile o calcolabile)
            - targetMeasureCm: misura in cm da raggiungere (se applicabile, es. 4 cm a coste)
+           - hasCounter: booleano (TRUE solo se lo step richiede di contare attivamente maglie avviate, ripetizioni di ferri o calature; FALSE per note, materiali, cambio ferri, marcapunti o istruzioni basate solo su centimetri)
+           - counterLabel: etichetta breve del contatore se hasCounter è true (es. "Maglie Avviate", "Giri Aumenti", "Calature")
+           - targetStepCount: il numero obiettivo intero se hasCounter è true (es. 114, 29, 18)
            - sourcePage: numero della pagina del PDF da cui è tratta l'istruzione (1-based)
            - sourceQuote: breve frase originale in inglese dal PDF
         5. Rispondi ESCLUSIVAMENTE con un oggetto JSON valido conforme allo schema specificato.
@@ -125,10 +130,13 @@ final class GeminiService: @unchecked Sendable {
                                         "instruction": ["type": "STRING"],
                                         "stitchCountAfter": ["type": "INTEGER"],
                                         "targetMeasureCm": ["type": "NUMBER"],
+                                        "hasCounter": ["type": "BOOLEAN"],
+                                        "counterLabel": ["type": "STRING"],
+                                        "targetStepCount": ["type": "INTEGER"],
                                         "sourcePage": ["type": "INTEGER"],
                                         "sourceQuote": ["type": "STRING"]
                                     ],
-                                    "required": ["instruction"]
+                                    "required": ["instruction", "hasCounter"]
                                 ]
                             ]
                         ],

@@ -12,6 +12,8 @@ final class GuideStep {
     var sourceQuote: String?
     var isCompleted: Bool
     var orderIndex: Int
+    var hasCounter: Bool = false
+    var counterLabel: String?
     var currentStepCount: Int = 0
     var targetStepCount: Int?
     
@@ -26,6 +28,8 @@ final class GuideStep {
         sourceQuote: String? = nil,
         isCompleted: Bool = false,
         orderIndex: Int = 0,
+        hasCounter: Bool = false,
+        counterLabel: String? = nil,
         currentStepCount: Int = 0,
         targetStepCount: Int? = nil
     ) {
@@ -38,6 +42,8 @@ final class GuideStep {
         self.sourceQuote = sourceQuote
         self.isCompleted = isCompleted
         self.orderIndex = orderIndex
+        self.hasCounter = hasCounter
+        self.counterLabel = counterLabel
         self.currentStepCount = currentStepCount
         self.targetStepCount = targetStepCount
     }
