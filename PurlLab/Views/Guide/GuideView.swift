@@ -14,6 +14,9 @@ struct GuideView: View {
     @State private var displayMode: GuideDisplayMode = .card
     @State private var currentStepIndex: Int = 0
     @State private var showingGenerateSheet = false
+    @State private var showingAddStepSheet = false
+    @State private var sectionToDelete: String? = nil
+    @State private var showingDeleteSectionAlert = false
     @State private var errorMessage: String?
     
     private var sortedSteps: [GuideStep] {
@@ -50,7 +53,7 @@ struct GuideView: View {
                     ContentUnavailableView {
                         Label("Nessuna Guida", systemImage: "sparkles")
                     } description: {
-                        Text("Carica la guida del No Frills Sweater o generane una nuova da PDF con Gemini.")
+                        Text("Carica la guida del No Frills Sweater, generane una nuova da PDF con Gemini o aggiungi manualmente sezioni e passaggi.")
                     } actions: {
                         VStack(spacing: 12) {
                             Button {
@@ -64,12 +67,22 @@ struct GuideView: View {
                             .buttonStyle(.borderedProminent)
                             
                             Button {
+                                showingAddStepSheet = true
+                            } label: {
+                                Label("Aggiungi Sezione Manualmente", systemImage: "plus.circle")
+                                    .frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(.bordered)
+                            
+                            Button {
                                 showingGenerateSheet = true
                             } label: {
                                 Label("Genera con Gemini AI", systemImage: "brain")
                                     .frame(maxWidth: .infinity)
                             }
-                            .buttonStyle(.bordered)
+                            .buttonStyle(.plain)
+                            .foregroundColor(.secondary)
+                            .padding(.top, 4)
                             .disabled(project.pdfData == nil)
                         }
                         .padding(.horizontal, 24)
@@ -92,16 +105,45 @@ struct GuideView: View {
                             GuideSingleCardView(
                                 steps: sortedSteps,
                                 currentIndex: $currentStepIndex,
-                                onNavigateToPage: onSelectPdfPage
+                                onNavigateToPage: onSelectPdfPage,
+                                onDeleteStep: { step in
+                                    deleteStep(step)
+                                }
                             )
                         } else {
-                            // Modalità Elenco Completo
+                            // Modalità Elenco Completo con gestione Sezioni
                             List {
                                 ForEach(orderedSections) { group in
-                                    Section(header: Text(group.title).font(.headline)) {
+                                    Section {
                                         ForEach(group.steps) { step in
-                                            GuideStepRow(step: step) { page in
-                                                onSelectPdfPage(page)
+                                            GuideStepRow(
+                                                step: step,
+                                                onNavigateToPage: onSelectPdfPage,
+                                                onDelete: {
+                                                    deleteStep(step)
+                                                }
+                                            )
+                                        }
+                                        .onDelete { indexSet in
+                                            deleteStepsFromGroup(indexSet, in: group)
+                                        }
+                                    } header: {
+                                        HStack {
+                                            Text(group.title)
+                                                .font(.headline)
+                                            Spacer()
+                                            Menu {
+                                                Button(role: .destructive) {
+                                                    sectionToDelete = group.title
+                                                    showingDeleteSectionAlert = true
+                                                } label: {
+                                                    Label("Elimina Sezione '\(group.title)'", systemImage: "trash")
+                                                }
+                                            } label: {
+                                                Image(systemName: "ellipsis")
+                                                    .font(.caption)
+                                                    .foregroundColor(.secondary)
+                                                    .padding(6)
                                             }
                                         }
                                     }
@@ -115,21 +157,47 @@ struct GuideView: View {
             .navigationTitle(displayMode == .card && !project.guideSteps.isEmpty ? "Guida Attiva" : "Guida Passo-Passo")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                if !project.guideSteps.isEmpty {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Menu {
-                            Button {
-                                loadPreloadedGuide()
-                            } label: {
-                                Label("Ricarica Guida No Frills (M)", systemImage: "arrow.counterclockwise")
-                            }
-                            Button {
-                                showingGenerateSheet = true
-                            } label: {
-                                Label("Rigenera con Gemini AI", systemImage: "sparkles")
-                            }
+                ToolbarItem(placement: .topBarTrailing) {
+                    HStack(spacing: 12) {
+                        // Tasto rapido Aggiungi Sezione o Passaggio
+                        Button {
+                            showingAddStepSheet = true
                         } label: {
-                            Image(systemName: "ellipsis.circle")
+                            Image(systemName: "plus")
+                                .font(.body.bold())
+                        }
+                        
+                        if !project.guideSteps.isEmpty {
+                            Menu {
+                                Button {
+                                    showingAddStepSheet = true
+                                } label: {
+                                    Label("Aggiungi Sezione / Passaggio", systemImage: "plus.rectangle.on.rectangle")
+                                }
+                                
+                                Divider()
+                                
+                                Button {
+                                    loadPreloadedGuide()
+                                } label: {
+                                    Label("Ricarica Guida No Frills (M)", systemImage: "arrow.counterclockwise")
+                                }
+                                Button {
+                                    showingGenerateSheet = true
+                                } label: {
+                                    Label("Rigenera con Gemini AI", systemImage: "sparkles")
+                                }
+                                
+                                Divider()
+                                
+                                Button(role: .destructive) {
+                                    clearAllSteps()
+                                } label: {
+                                    Label("Svuota Tutta la Guida", systemImage: "trash")
+                                }
+                            } label: {
+                                Image(systemName: "ellipsis.circle")
+                            }
                         }
                     }
                 }
@@ -139,8 +207,22 @@ struct GuideView: View {
                     currentStepIndex = firstIncomplete
                 }
             }
+            .sheet(isPresented: $showingAddStepSheet) {
+                AddGuideStepSheet(project: project)
+            }
             .sheet(isPresented: $showingGenerateSheet) {
                 GenerateGuideSheet(project: project)
+            }
+            .alert("Elimina Sezione", isPresented: $showingDeleteSectionAlert) {
+                Button("Annulla", role: .cancel) { sectionToDelete = nil }
+                Button("Elimina", role: .destructive) {
+                    if let sec = sectionToDelete {
+                        deleteEntireSection(sec)
+                    }
+                    sectionToDelete = nil
+                }
+            } message: {
+                Text("Sei sicuro di voler eliminare l'intera sezione '\(sectionToDelete ?? "")' e tutti i suoi passaggi?")
             }
             .alert("Errore", isPresented: .constant(errorMessage != nil)) {
                 Button("OK") { errorMessage = nil }
@@ -148,6 +230,39 @@ struct GuideView: View {
                 Text(errorMessage ?? "")
             }
         }
+    }
+    
+    // MARK: - Funzioni di Cancellazione e Gestione
+    private func deleteStep(_ step: GuideStep) {
+        if let idx = project.guideSteps.firstIndex(where: { $0.id == step.id }) {
+            project.guideSteps.remove(at: idx)
+            modelContext.delete(step)
+            if currentStepIndex >= project.guideSteps.count {
+                currentStepIndex = max(0, project.guideSteps.count - 1)
+            }
+        }
+    }
+    
+    private func deleteStepsFromGroup(_ indexSet: IndexSet, in group: SectionGroup) {
+        for index in indexSet {
+            let step = group.steps[index]
+            deleteStep(step)
+        }
+    }
+    
+    private func deleteEntireSection(_ sectionTitle: String) {
+        let stepsToDelete = project.guideSteps.filter { $0.sectionTitle == sectionTitle }
+        for step in stepsToDelete {
+            deleteStep(step)
+        }
+    }
+    
+    private func clearAllSteps() {
+        for step in project.guideSteps {
+            modelContext.delete(step)
+        }
+        project.guideSteps.removeAll()
+        currentStepIndex = 0
     }
     
     private func loadPreloadedGuide() {
@@ -189,11 +304,12 @@ struct GuideView: View {
     }
 }
 
-// MARK: - Vista Card Singola con Contatore Intelligente
+// MARK: - Vista Card Singola
 struct GuideSingleCardView: View {
     let steps: [GuideStep]
     @Binding var currentIndex: Int
     var onNavigateToPage: (Int) -> Void
+    var onDeleteStep: (GuideStep) -> Void
     
     @State private var showingEditSheet = false
     private let haptic = UIImpactFeedbackGenerator(style: .medium)
@@ -261,8 +377,8 @@ struct GuideSingleCardView: View {
                                 }
                                 .font(.caption.bold())
                                 .foregroundColor(.secondary)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 4)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 5)
                                 .background(Color(.systemGray5))
                                 .clipShape(Capsule())
                             }
@@ -304,7 +420,7 @@ struct GuideSingleCardView: View {
                             }
                         }
                         
-                        // MOSTRA IL CONTATORE SOLO SE QUESTA CARD LO RICHIEDE
+                        // Contatore se presente
                         if step.hasCounter {
                             Divider()
                                 .padding(.vertical, 4)
@@ -371,7 +487,9 @@ struct GuideSingleCardView: View {
                 .padding(.bottom, 12)
             }
             .sheet(isPresented: $showingEditSheet) {
-                EditGuideStepSheet(step: step)
+                EditGuideStepSheet(step: step, onDelete: {
+                    onDeleteStep(step)
+                })
             }
         }
     }
@@ -489,23 +607,148 @@ struct CardCounterBoxView: View {
     }
 }
 
-// MARK: - Foglio per Modificare il Testo e il Contatore della Card
+// MARK: - Foglio per Aggiungere Manualmente una Sezione o Passaggio
+struct AddGuideStepSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var modelContext
+    var project: KnittingProject
+    
+    @State private var sectionTitle: String = ""
+    @State private var instructionText: String = ""
+    @State private var hasCounter: Bool = false
+    @State private var counterLabel: String = "Maglie"
+    @State private var targetCountString: String = ""
+    @State private var targetMeasureString: String = ""
+    @State private var sourcePageString: String = ""
+    @State private var stitchCountString: String = ""
+    
+    var existingSections: [String] {
+        var titles: [String] = []
+        for step in project.guideSteps.sorted(by: { $0.orderIndex < $1.orderIndex }) {
+            if !titles.contains(step.sectionTitle) {
+                titles.append(step.sectionTitle)
+            }
+        }
+        return titles
+    }
+    
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Sezione") {
+                    TextField("Nome Sezione (es. Collo, Sprone, Bordo...)", text: $sectionTitle)
+                    
+                    if !existingSections.isEmpty {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 8) {
+                                ForEach(existingSections, id: \.self) { sec in
+                                    Button {
+                                        sectionTitle = sec
+                                    } label: {
+                                        Text(sec)
+                                            .font(.caption)
+                                            .padding(.horizontal, 10)
+                                            .padding(.vertical, 5)
+                                            .background(sectionTitle == sec ? Color.accentColor : Color(.systemGray5))
+                                            .foregroundColor(sectionTitle == sec ? .white : .primary)
+                                            .clipShape(Capsule())
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                            .padding(.vertical, 4)
+                        }
+                    }
+                }
+                
+                Section("Istruzione") {
+                    TextEditor(text: $instructionText)
+                        .frame(minHeight: 100)
+                }
+                
+                Section("Contatore Integrato") {
+                    Toggle("Abilita contatore su questa card", isOn: $hasCounter)
+                    
+                    if hasCounter {
+                        TextField("Nome contatore (es. Maglie Avviate, Giri, Calature)", text: $counterLabel)
+                        TextField("Obiettivo numerico (es. 114)", text: $targetCountString)
+                            .keyboardType(.numberPad)
+                    }
+                }
+                
+                Section("Dettagli Aggiuntivi (Opzionali)") {
+                    TextField("Maglie totali al termine (es. 114)", text: $stitchCountString)
+                        .keyboardType(.numberPad)
+                    
+                    TextField("Misura in cm (es. 4.0)", text: $targetMeasureString)
+                        .keyboardType(.decimalPad)
+                    
+                    TextField("Numero pagina PDF (es. 2)", text: $sourcePageString)
+                        .keyboardType(.numberPad)
+                }
+            }
+            .navigationTitle("Aggiungi Passaggio")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Annulla") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Aggiungi") {
+                        saveNewStep()
+                        dismiss()
+                    }
+                    .bold()
+                    .disabled(sectionTitle.trimmingCharacters(in: .whitespaces).isEmpty || instructionText.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+            }
+        }
+    }
+    
+    private func saveNewStep() {
+        let step = GuideStep(
+            sectionTitle: sectionTitle.trimmingCharacters(in: .whitespaces),
+            instructionText: instructionText.trimmingCharacters(in: .whitespaces),
+            stitchCountAfter: Int(stitchCountString),
+            targetMeasureCm: Double(targetMeasureString.replacingOccurrences(of: ",", with: ".")),
+            sourcePage: Int(sourcePageString),
+            sourceQuote: nil,
+            orderIndex: project.guideSteps.count,
+            hasCounter: hasCounter,
+            counterLabel: hasCounter ? counterLabel : nil,
+            currentStepCount: 0,
+            targetStepCount: hasCounter ? Int(targetCountString) : nil
+        )
+        step.project = project
+        project.guideSteps.append(step)
+    }
+}
+
+// MARK: - Foglio Modifica Passaggio e Sezione
 struct EditGuideStepSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Bindable var step: GuideStep
+    var onDelete: () -> Void
     
+    @State private var sectionTitle: String = ""
     @State private var editedText: String = ""
     @State private var hasCounter: Bool = false
     @State private var counterLabel: String = ""
     @State private var targetCountString: String = ""
     @State private var targetMeasureString: String = ""
+    @State private var stitchCountString: String = ""
+    @State private var sourcePageString: String = ""
     
     var body: some View {
         NavigationStack {
             Form {
+                Section("Sezione di Appartenenza") {
+                    TextField("Nome Sezione", text: $sectionTitle)
+                }
+                
                 Section("Testo Istruzione") {
                     TextEditor(text: $editedText)
-                        .frame(minHeight: 120)
+                        .frame(minHeight: 110)
                 }
                 
                 Section("Contatore per questa Card") {
@@ -518,9 +761,28 @@ struct EditGuideStepSheet: View {
                     }
                 }
                 
-                Section("Misure e Pagine") {
-                    TextField("Misura in cm (opzionale, es. 4.0)", text: $targetMeasureString)
+                Section("Misure e Dati") {
+                    TextField("Maglie totali (es. 114)", text: $stitchCountString)
+                        .keyboardType(.numberPad)
+                    
+                    TextField("Misura in cm (es. 4.0)", text: $targetMeasureString)
                         .keyboardType(.decimalPad)
+                        
+                    TextField("Pagina del PDF", text: $sourcePageString)
+                        .keyboardType(.numberPad)
+                }
+                
+                Section {
+                    Button(role: .destructive) {
+                        onDelete()
+                        dismiss()
+                    } label: {
+                        HStack {
+                            Spacer()
+                            Label("Elimina questo Passaggio", systemImage: "trash")
+                            Spacer()
+                        }
+                    }
                 }
             }
             .navigationTitle("Modifica Passaggio")
@@ -538,25 +800,35 @@ struct EditGuideStepSheet: View {
                 }
             }
             .onAppear {
+                sectionTitle = step.sectionTitle
                 editedText = step.instructionText
                 hasCounter = step.hasCounter
                 counterLabel = step.counterLabel ?? ""
                 if let target = step.targetStepCount {
                     targetCountString = "\(target)"
                 }
+                if let sts = step.stitchCountAfter {
+                    stitchCountString = "\(sts)"
+                }
                 if let measure = step.targetMeasureCm {
                     targetMeasureString = "\(measure)"
+                }
+                if let page = step.sourcePage {
+                    sourcePageString = "\(page)"
                 }
             }
         }
     }
     
     private func saveChanges() {
+        step.sectionTitle = sectionTitle.trimmingCharacters(in: .whitespaces)
         step.instructionText = editedText
         step.hasCounter = hasCounter
         step.counterLabel = counterLabel.isEmpty ? nil : counterLabel
         step.targetStepCount = Int(targetCountString)
+        step.stitchCountAfter = Int(stitchCountString)
         step.targetMeasureCm = Double(targetMeasureString.replacingOccurrences(of: ",", with: "."))
+        step.sourcePage = Int(sourcePageString)
     }
 }
 
@@ -564,6 +836,7 @@ struct EditGuideStepSheet: View {
 struct GuideStepRow: View {
     @Bindable var step: GuideStep
     var onNavigateToPage: (Int) -> Void
+    var onDelete: () -> Void
     @State private var showingEditSheet = false
     
     var body: some View {
@@ -658,7 +931,7 @@ struct GuideStepRow: View {
         }
         .padding(.vertical, 4)
         .sheet(isPresented: $showingEditSheet) {
-            EditGuideStepSheet(step: step)
+            EditGuideStepSheet(step: step, onDelete: onDelete)
         }
     }
 }
