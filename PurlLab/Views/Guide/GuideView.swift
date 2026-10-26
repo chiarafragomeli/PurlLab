@@ -10,6 +10,30 @@ struct GuideView: View {
     @State private var isGenerating = false
     @State private var errorMessage: String?
     
+    struct SectionGroup: Identifiable {
+        let id: String
+        let title: String
+        let steps: [GuideStep]
+    }
+    
+    private var orderedSections: [SectionGroup] {
+        let sortedSteps = project.guideSteps.sorted(by: { $0.orderIndex < $1.orderIndex })
+        var orderedTitles: [String] = []
+        for step in sortedSteps {
+            if !orderedTitles.contains(step.sectionTitle) {
+                orderedTitles.append(step.sectionTitle)
+            }
+        }
+        
+        return orderedTitles.map { title in
+            SectionGroup(
+                id: title,
+                title: title,
+                steps: sortedSteps.filter { $0.sectionTitle == title }
+            )
+        }
+    }
+    
     var body: some View {
         NavigationStack {
             Group {
@@ -43,11 +67,9 @@ struct GuideView: View {
                     }
                 } else {
                     List {
-                        let grouped = Dictionary(grouping: project.guideSteps.sorted(by: { $0.orderIndex < $1.orderIndex })) { $0.sectionTitle }
-                        
-                        ForEach(grouped.keys.sorted(), id: \.self) { sectionTitle in
-                            Section(header: Text(sectionTitle).font(.headline)) {
-                                ForEach(grouped[sectionTitle] ?? []) { step in
+                        ForEach(orderedSections) { group in
+                            Section(header: Text(group.title).font(.headline)) {
+                                ForEach(group.steps) { step in
                                     GuideStepRow(step: step) { page in
                                         onSelectPdfPage(page)
                                     }
