@@ -20,6 +20,7 @@
 		A1D3D71FF25305A6380FFD7D /* NoFrillsSweater.pdf in Resources */ = {isa = PBXBuildFile; fileRef = DC04E762836ABF7DDA411919 /* NoFrillsSweater.pdf */; };
 		A4332D261F07396F826560D4 /* PatternPDFView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C8D8AF3D4FE104EBDC2A2A3 /* PatternPDFView.swift */; };
 		A4714E5675F3B799E1E9BA89 /* GeminiService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4974FF7AC44D550D6C785133 /* GeminiService.swift */; };
+		C23CB4F5B38573E9EB25E08E /* NoFrillsGuide_M.json in Resources */ = {isa = PBXBuildFile; fileRef = 792C06A33FA0538F86C89C58 /* NoFrillsGuide_M.json */; };
 		CEDA46DDBA1667561030B26D /* KeychainHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = B09183BCE227B9913B32C00A /* KeychainHelper.swift */; };
 		D5B81BEB987F3C6684FA2F65 /* KnittingProject.swift in Sources */ = {isa = PBXBuildFile; fileRef = 899C3D33AF11D62B1DDF1281 /* KnittingProject.swift */; };
 		F5912CFC1053383DE38E082D /* TimerManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1B26E54FA163079B6241326 /* TimerManager.swift */; };
@@ -34,6 +35,7 @@
 		4974FF7AC44D550D6C785133 /* GeminiService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeminiService.swift; sourceTree = "<group>"; };
 		4CD9112FA38A149EE5D1E01F /* PurlLab.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = PurlLab.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		5EFA754564E139C334F4AEBE /* ProjectListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectListView.swift; sourceTree = "<group>"; };
+		792C06A33FA0538F86C89C58 /* NoFrillsGuide_M.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = NoFrillsGuide_M.json; sourceTree = "<group>"; };
 		899C3D33AF11D62B1DDF1281 /* KnittingProject.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KnittingProject.swift; sourceTree = "<group>"; };
 		9C61EFFA108303FDE921107A /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		A7B33461524B84F6AADF317E /* RowCounter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RowCounter.swift; sourceTree = "<group>"; };
@@ -109,6 +111,7 @@
 			isa = PBXGroup;
 			children = (
 				23B00C30EBCB7A83FBE2F53D /* Assets.xcassets */,
+				792C06A33FA0538F86C89C58 /* NoFrillsGuide_M.json */,
 				DC04E762836ABF7DDA411919 /* NoFrillsSweater.pdf */,
 			);
 			path = Resources;
@@ -222,6 +225,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				26DB21CAF7D4CD5C3A0D99DB /* Assets.xcassets in Resources */,
+				C23CB4F5B38573E9EB25E08E /* NoFrillsGuide_M.json in Resources */,
 				A1D3D71FF25305A6380FFD7D /* NoFrillsSweater.pdf in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

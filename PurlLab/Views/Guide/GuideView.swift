@@ -19,16 +19,27 @@ struct GuideView: View {
                     } description: {
                         Text("Genera una guida interattiva passo-passo dal PDF del pattern con Gemini AI.")
                     } actions: {
-                        Button {
-                            showingGenerateSheet = true
-                        } label: {
-                            Text("Genera Guida con AI")
-                                .bold()
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 8)
+                        VStack(spacing: 12) {
+                            Button {
+                                loadPreloadedGuide()
+                            } label: {
+                                Label("Carica Guida No Frills (Taglia M)", systemImage: "sparkles")
+                                    .bold()
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 4)
+                            }
+                            .buttonStyle(.borderedProminent)
+                            
+                            Button {
+                                showingGenerateSheet = true
+                            } label: {
+                                Label("Genera con Gemini AI", systemImage: "brain")
+                                    .frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(.bordered)
+                            .disabled(project.pdfData == nil)
                         }
-                        .buttonStyle(.borderedProminent)
-                        .disabled(project.pdfData == nil)
+                        .padding(.horizontal, 24)
                     }
                 } else {
                     List {
@@ -66,6 +77,39 @@ struct GuideView: View {
                 Button("OK") { errorMessage = nil }
             } message: {
                 Text(errorMessage ?? "")
+            }
+        }
+    }
+    
+    private func loadPreloadedGuide() {
+        guard let guideUrl = Bundle.main.url(forResource: "NoFrillsGuide_M", withExtension: "json"),
+              let guideData = try? Data(contentsOf: guideUrl),
+              let guide = try? JSONDecoder().decode(GeneratedGuideResponse.self, from: guideData) else {
+            errorMessage = "Guida di test non trovata nel bundle."
+            return
+        }
+        
+        project.selectedSize = "M"
+        for step in project.guideSteps {
+            modelContext.delete(step)
+        }
+        project.guideSteps.removeAll()
+        
+        var stepOrder = 0
+        for section in guide.sections {
+            for stepData in section.steps {
+                let step = GuideStep(
+                    sectionTitle: section.name,
+                    instructionText: stepData.instruction,
+                    stitchCountAfter: stepData.stitchCountAfter,
+                    targetMeasureCm: stepData.targetMeasureCm,
+                    sourcePage: stepData.sourcePage,
+                    sourceQuote: stepData.sourceQuote,
+                    orderIndex: stepOrder
+                )
+                step.project = project
+                project.guideSteps.append(step)
+                stepOrder += 1
             }
         }
     }
@@ -195,6 +239,39 @@ struct GenerateGuideSheet: View {
                 Button("OK") { errorMessage = nil }
             } message: {
                 Text(errorMessage ?? "")
+            }
+        }
+    }
+    
+    private func loadPreloadedGuide() {
+        guard let guideUrl = Bundle.main.url(forResource: "NoFrillsGuide_M", withExtension: "json"),
+              let guideData = try? Data(contentsOf: guideUrl),
+              let guide = try? JSONDecoder().decode(GeneratedGuideResponse.self, from: guideData) else {
+            errorMessage = "Guida di test non trovata nel bundle."
+            return
+        }
+        
+        project.selectedSize = "M"
+        for step in project.guideSteps {
+            modelContext.delete(step)
+        }
+        project.guideSteps.removeAll()
+        
+        var stepOrder = 0
+        for section in guide.sections {
+            for stepData in section.steps {
+                let step = GuideStep(
+                    sectionTitle: section.name,
+                    instructionText: stepData.instruction,
+                    stitchCountAfter: stepData.stitchCountAfter,
+                    targetMeasureCm: stepData.targetMeasureCm,
+                    sourcePage: stepData.sourcePage,
+                    sourceQuote: stepData.sourceQuote,
+                    orderIndex: stepOrder
+                )
+                step.project = project
+                project.guideSteps.append(step)
+                stepOrder += 1
             }
         }
     }

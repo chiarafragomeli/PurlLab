@@ -152,6 +152,29 @@ struct ProjectListView: View {
         c2.project = project
         project.counters.append(c2)
         
+        // Carica la guida pre-generata con Gemini per la taglia M
+        if let guideUrl = Bundle.main.url(forResource: "NoFrillsGuide_M", withExtension: "json"),
+           let guideData = try? Data(contentsOf: guideUrl),
+           let guide = try? JSONDecoder().decode(GeneratedGuideResponse.self, from: guideData) {
+            var stepOrder = 0
+            for section in guide.sections {
+                for stepData in section.steps {
+                    let step = GuideStep(
+                        sectionTitle: section.name,
+                        instructionText: stepData.instruction,
+                        stitchCountAfter: stepData.stitchCountAfter,
+                        targetMeasureCm: stepData.targetMeasureCm,
+                        sourcePage: stepData.sourcePage,
+                        sourceQuote: stepData.sourceQuote,
+                        orderIndex: stepOrder
+                    )
+                    step.project = project
+                    project.guideSteps.append(step)
+                    stepOrder += 1
+                }
+            }
+        }
+        
         modelContext.insert(project)
     }
     
