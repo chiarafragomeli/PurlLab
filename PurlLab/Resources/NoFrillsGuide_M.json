@@ -10,7 +10,7 @@
   ],
   "sections": [
     {
-      "name": "Preparazione (Taglia M)",
+      "name": "Preparazione",
       "steps": [
         {
           "title": "Campione, Ferri e Filato (Taglia M)",
@@ -100,7 +100,7 @@
       ]
     },
     {
-      "name": "Sprone (Yoke)",
+      "name": "Sprone",
       "steps": [
         {
           "title": "Ferri Accorciati sullo Scollo (5 × 4 ferri = 20 ferri)",
@@ -153,7 +153,7 @@
       ]
     },
     {
-      "name": "Corpo (Body)",
+      "name": "Corpo",
       "steps": [
         {
           "title": "Separazione Maniche e Avvio Sottomanica (228 maglie)",
@@ -256,7 +256,7 @@
       ]
     },
     {
-      "name": "Manica 1 (Destra)",
+      "name": "Manica Destra",
       "steps": [
         {
           "title": "Ripresa Maglie Manica 1 (83 + 4 = 87 maglie)",
@@ -335,7 +335,7 @@
       ]
     },
     {
-      "name": "Manica 2 (Sinistra)",
+      "name": "Manica Sinistra",
       "steps": [
         {
           "title": "Ripresa Maglie Manica 2 (83 + 4 = 87 maglie)",

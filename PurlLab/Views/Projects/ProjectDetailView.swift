@@ -62,6 +62,7 @@ struct ProjectTimerBar: View {
 
 struct ProjectDetailView: View {
     @Bindable var project: KnittingProject
+    @Environment(\.dismiss) private var dismiss
     @State private var selectedTab: DetailTab = .guide
     @State private var targetPdfPage: Int = 1
     
@@ -75,10 +76,12 @@ struct ProjectDetailView: View {
         VStack(spacing: 0) {
             // Tab Content
             TabView(selection: $selectedTab) {
-                GuideView(project: project) { page in
+                GuideView(project: project, onSelectPdfPage: { page in
                     targetPdfPage = page
                     selectedTab = .pdf
-                }
+                }, onExitProject: {
+                    dismiss()
+                })
                 .tag(DetailTab.guide)
                 
                 CountersView(project: project)

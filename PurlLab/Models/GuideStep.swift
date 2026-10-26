@@ -23,6 +23,10 @@ final class GuideStep {
     var counterLabel: String?
     var currentStepCount: Int = 0
     var targetStepCount: Int?
+    /// Contatori aggiuntivi aggiunti manualmente dall'utente su questa scheda
+    var extraCounterLabels: [String] = []
+    var extraCounterValues: [Int] = []
+    var completedAt: Date?
     
     var project: KnittingProject?
     

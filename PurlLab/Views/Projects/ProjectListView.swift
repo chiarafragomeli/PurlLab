@@ -11,7 +11,7 @@ struct ProjectListView: View {
     @State private var showingManualNewProject = false
     @State private var newProjectTitle = ""
     @State private var newProjectDesigner = ""
-    @AppStorage("didAutoLoadSampleV2") private var didAutoLoadSampleV2 = false
+    @AppStorage("didAutoLoadSampleV3") private var didAutoLoadSampleV3 = false
     
     var body: some View {
         NavigationStack {
@@ -57,8 +57,8 @@ struct ProjectListView: View {
             }
             .navigationTitle("I Miei Progetti")
             .onAppear {
-                if projects.isEmpty && !didAutoLoadSampleV2 {
-                    didAutoLoadSampleV2 = true
+                if projects.isEmpty && !didAutoLoadSampleV3 {
+                    didAutoLoadSampleV3 = true
                     loadSamplePattern()
                 }
             }
@@ -165,7 +165,7 @@ struct ProjectListView: View {
             for section in guide.sections {
                 for stepData in section.steps {
                     let step = GuideStep(
-                        sectionTitle: section.name,
+                        sectionTitle: GeminiService.cleanSectionName(section.name),
                         title: stepData.title ?? "",
                         stepType: stepData.stepType ?? "single_action",
                         instructionText: stepData.instruction,
@@ -248,6 +248,16 @@ struct ProjectRowView: View {
                         Text("• Taglia \(project.selectedSize)")
                             .foregroundColor(.accentColor)
                             .bold()
+                    }
+                    
+                    if project.completedAt != nil {
+                        Text("Completato")
+                            .font(.caption2.bold())
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.green.opacity(0.15))
+                            .foregroundColor(.green)
+                            .clipShape(Capsule())
                     }
                 }
                 .font(.subheadline)

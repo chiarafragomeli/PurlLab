@@ -59,6 +59,13 @@ final class GeminiService: @unchecked Sendable {
     static let shared = GeminiService()
     private init() {}
     
+    /// Rimuove eventuali traduzioni inglesi tra parentesi dai nomi delle sezioni (es. "Corpo (Body)" -> "Corpo").
+    static func cleanSectionName(_ name: String) -> String {
+        let pattern = #"\s*\((?i:body|yoke|sleeves?|neck(?:band|line)?|collar|hem|finishing|cuffs?|front|back|ribbing|set[- ]?up|gauge|materials|short rows|raglan increases|divide|edging|pocket|hood)\)"#
+        let cleaned = name.replacingOccurrences(of: pattern, with: "", options: .regularExpression)
+        return cleaned.trimmingCharacters(in: .whitespaces)
+    }
+    
     func generateGuide(from pdfData: Data, targetSize: String) async throws -> GeneratedGuideResponse {
         guard let rawKey = KeychainHelper.shared.getGeminiApiKey(), !rawKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw GeminiError.missingApiKey
@@ -113,6 +120,7 @@ final class GeminiService: @unchecked Sendable {
         
         4. FILTRO TAGLIA E GLOSSARIO ITALIANO:
            - Mostra SOLO i numeri per la taglia "\(targetSize)".
+           - I nomi delle sezioni ("name") e i titoli delle schede devono essere SOLO in italiano, SENZA la traduzione inglese tra parentesi (es. "Corpo" e NON "Corpo (Body)", "Sprone" e NON "Sprone (Yoke)", "Maniche" e NON "Maniche (Sleeves)").
            - Usa i termini italiani: dir (diritto), rov (rovescio), 2 dir ins (k2tog), 2 dir ins ritorto / acc (ssk / k2tog tbl), AID (M1R), AIS (M1L), MP (marcapunti), ferri accorciati alla tedesca (German short rows).
         """
         

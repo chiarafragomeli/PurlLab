@@ -12,6 +12,7 @@ final class KnittingProject {
     var createdAt: Date
     var updatedAt: Date
     var totalSecondsWorked: TimeInterval
+    var completedAt: Date?
     
     @Relationship(deleteRule: .cascade) var counters: [RowCounter] = []
     @Relationship(deleteRule: .cascade) var guideSteps: [GuideStep] = []

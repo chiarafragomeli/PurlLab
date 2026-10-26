@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		09B0864FE338D3382FC25C7D /* GuideCompletionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3122C4020207D8901745592B /* GuideCompletionView.swift */; };
 		0F1A9825AB02BAF58E453EF1 /* GuideView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F03DA82C19075EAC1BBC944E /* GuideView.swift */; };
 		0F26500457C14AD709FDD4E1 /* PurlLabApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32C7C9AE21E0B8E8EF01F13F /* PurlLabApp.swift */; };
 		26DB21CAF7D4CD5C3A0D99DB /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 23B00C30EBCB7A83FBE2F53D /* Assets.xcassets */; };
@@ -29,6 +30,7 @@
 /* Begin PBXFileReference section */
 		199DCA4D0037298D93770327 /* CountersView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CountersView.swift; sourceTree = "<group>"; };
 		23B00C30EBCB7A83FBE2F53D /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		3122C4020207D8901745592B /* GuideCompletionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GuideCompletionView.swift; sourceTree = "<group>"; };
 		32C7C9AE21E0B8E8EF01F13F /* PurlLabApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PurlLabApp.swift; sourceTree = "<group>"; };
 		3633C4A55B8054025112A460 /* TimerSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimerSession.swift; sourceTree = "<group>"; };
 		3C8D8AF3D4FE104EBDC2A2A3 /* PatternPDFView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatternPDFView.swift; sourceTree = "<group>"; };
@@ -155,6 +157,7 @@
 		CDBC0867153320B64B6503B8 /* Guide */ = {
 			isa = PBXGroup;
 			children = (
+				3122C4020207D8901745592B /* GuideCompletionView.swift */,
 				F03DA82C19075EAC1BBC944E /* GuideView.swift */,
 			);
 			path = Guide;
@@ -239,6 +242,7 @@
 			files = (
 				59154BC65B526C9A916CB02A /* CountersView.swift in Sources */,
 				A4714E5675F3B799E1E9BA89 /* GeminiService.swift in Sources */,
+				09B0864FE338D3382FC25C7D /* GuideCompletionView.swift in Sources */,
 				65CDF45B4527EE05C2F4AAAA /* GuideStep.swift in Sources */,
 				0F1A9825AB02BAF58E453EF1 /* GuideView.swift in Sources */,
 				CEDA46DDBA1667561030B26D /* KeychainHelper.swift in Sources */,

@@ -10,6 +10,7 @@ struct GuideView: View {
     @Bindable var project: KnittingProject
     @Environment(\.modelContext) private var modelContext
     var onSelectPdfPage: (Int) -> Void
+    var onExitProject: () -> Void = {}
     
     @State private var displayMode: GuideDisplayMode = .card
     @State private var currentStepIndex: Int = 0
@@ -18,6 +19,13 @@ struct GuideView: View {
     @State private var sectionToDelete: String? = nil
     @State private var showingDeleteSectionAlert = false
     @State private var errorMessage: String?
+    @State private var showingCompletion = false
+    
+    /// Etichetta del tab della guida: nome del pattern + taglia
+    private var patternTabLabel: String {
+        let size = project.selectedSize.trimmingCharacters(in: .whitespaces)
+        return size.isEmpty ? project.title : "\(project.title) · \(size)"
+    }
     
     private var sortedSteps: [GuideStep] {
         project.guideSteps.sorted(by: { $0.orderIndex < $1.orderIndex })
@@ -89,11 +97,33 @@ struct GuideView: View {
                     }
                 } else {
                     VStack(spacing: 0) {
-                        // Selettore Card Singola / Elenco Sezioni
-                        Picker("Modalità", selection: $displayMode) {
-                            ForEach(GuideDisplayMode.allCases, id: \.self) { mode in
-                                Text(mode.rawValue).tag(mode)
+                        if project.completedAt != nil {
+                            Button {
+                                showingCompletion = true
+                            } label: {
+                                HStack(spacing: 8) {
+                                    Image(systemName: "checkmark.seal.fill")
+                                    Text("Progetto completato · Vedi riepilogo")
+                                        .font(.subheadline.bold())
+                                    Spacer()
+                                    Image(systemName: "chevron.right")
+                                        .font(.caption.bold())
+                                }
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 10)
+                                .background(Color.green.opacity(0.15))
+                                .foregroundColor(.green)
+                                .clipShape(RoundedRectangle(cornerRadius: 12))
                             }
+                            .buttonStyle(.plain)
+                            .padding(.horizontal)
+                            .padding(.top, 8)
+                        }
+                        
+                        // Selettore Pattern (Card Singola) / Elenco Sezioni
+                        Picker("Modalità", selection: $displayMode) {
+                            Text(patternTabLabel).tag(GuideDisplayMode.card)
+                            Text(GuideDisplayMode.list.rawValue).tag(GuideDisplayMode.list)
                         }
                         .pickerStyle(.segmented)
                         .padding(.horizontal)
@@ -109,6 +139,9 @@ struct GuideView: View {
                                 onNavigateToPage: onSelectPdfPage,
                                 onDeleteStep: { step in
                                     deleteStep(step)
+                                },
+                                onFinishGuide: {
+                                    finishGuide()
                                 }
                             )
                         } else {
@@ -161,7 +194,7 @@ struct GuideView: View {
                     }
                 }
             }
-            .navigationTitle(displayMode == .card && !project.guideSteps.isEmpty ? "Guida Interattiva" : "Guida Passo-Passo")
+            .navigationTitle(displayMode == .card && !project.guideSteps.isEmpty ? patternTabLabel : "Elenco Sezioni")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -219,6 +252,18 @@ struct GuideView: View {
             .sheet(isPresented: $showingGenerateSheet) {
                 GenerateGuideSheet(project: project)
             }
+            .fullScreenCover(isPresented: $showingCompletion) {
+                GuideCompletionView(
+                    project: project,
+                    onReviewGuide: {
+                        showingCompletion = false
+                    },
+                    onExit: {
+                        showingCompletion = false
+                        onExitProject()
+                    }
+                )
+            }
             .alert("Elimina Sezione", isPresented: $showingDeleteSectionAlert) {
                 Button("Annulla", role: .cancel) { sectionToDelete = nil }
                 Button("Elimina", role: .destructive) {
@@ -236,6 +281,19 @@ struct GuideView: View {
                 Text(errorMessage ?? "")
             }
         }
+    }
+    
+    // MARK: - Fine Guida
+    private func finishGuide() {
+        // Salva la sessione di lavoro in corso nel tempo totale del progetto
+        if TimerManager.shared.isRunning && TimerManager.shared.activeProjectId == project.id {
+            let duration = TimerManager.shared.pause()
+            project.totalSecondsWorked += duration
+        }
+        project.completedAt = Date()
+        project.updatedAt = Date()
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        showingCompletion = true
     }
     
     // MARK: - Funzioni di Cancellazione e Gestione
@@ -269,6 +327,7 @@ struct GuideView: View {
         }
         project.guideSteps.removeAll()
         currentStepIndex = 0
+        project.completedAt = nil
     }
     
     private func loadPreloadedGuide() {
@@ -280,6 +339,7 @@ struct GuideView: View {
         }
         
         project.selectedSize = "M"
+        project.completedAt = nil
         for step in project.guideSteps {
             modelContext.delete(step)
         }
@@ -289,7 +349,7 @@ struct GuideView: View {
         for section in guide.sections {
             for stepData in section.steps {
                 let step = GuideStep(
-                    sectionTitle: section.name,
+                    sectionTitle: GeminiService.cleanSectionName(section.name),
                     title: stepData.title ?? "",
                     stepType: stepData.stepType ?? "single_action",
                     instructionText: stepData.instruction,
@@ -324,6 +384,7 @@ struct GuideSingleCardView: View {
     @Binding var currentIndex: Int
     var onNavigateToPage: (Int) -> Void
     var onDeleteStep: (GuideStep) -> Void
+    var onFinishGuide: () -> Void = {}
     
     @State private var showingEditSheet = false
     private let haptic = UIImpactFeedbackGenerator(style: .medium)
@@ -439,6 +500,21 @@ struct GuideSingleCardView: View {
                             }
                             
                             Spacer()
+                            
+                            if step.isCompleted {
+                                Menu {
+                                    Button {
+                                        step.isCompleted = false
+                                        step.completedAt = nil
+                                    } label: {
+                                        Label("Segna come da fare", systemImage: "arrow.uturn.backward")
+                                    }
+                                } label: {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .font(.title3)
+                                        .foregroundColor(.green)
+                                }
+                            }
                             
                             Button {
                                 showingEditSheet = true
@@ -609,7 +685,9 @@ struct GuideSingleCardView: View {
                 }
                 
                 // Barra di Navigazione Inferiore
-                HStack(spacing: 14) {
+                // Le frecce servono solo a sfogliare (NON segnano la scheda come completata).
+                // Il pulsante centrale segna la scheda come completata e passa alla successiva.
+                HStack(spacing: 10) {
                     Button {
                         if currentIndex > 0 {
                             withAnimation(.easeInOut(duration: 0.25)) {
@@ -617,42 +695,69 @@ struct GuideSingleCardView: View {
                             }
                         }
                     } label: {
-                        HStack(spacing: 6) {
-                            Image(systemName: "chevron.left")
-                            Text("Indietro")
-                        }
-                        .font(.headline)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 14)
-                        .background(Color(.systemGray6))
-                        .foregroundColor(currentIndex > 0 ? .primary : .secondary.opacity(0.5))
-                        .clipShape(RoundedRectangle(cornerRadius: 16))
+                        Image(systemName: "chevron.left")
+                            .font(.headline.bold())
+                            .frame(width: 52, height: 50)
+                            .background(Color(.systemGray6))
+                            .foregroundColor(currentIndex > 0 ? .primary : .secondary.opacity(0.5))
+                            .clipShape(RoundedRectangle(cornerRadius: 16))
                     }
                     .disabled(currentIndex == 0)
                     
+                    let isLast = currentIndex >= steps.count - 1
                     Button {
                         haptic.impactOccurred()
+                        TimerManager.shared.registerInteraction()
+                        if step.isCompleted && !isLast {
+                            // Scheda già completata: si limita ad avanzare
+                            withAnimation(.easeInOut(duration: 0.25)) { currentIndex += 1 }
+                            return
+                        }
                         step.isCompleted = true
-                        if currentIndex < steps.count - 1 {
-                            withAnimation(.easeInOut(duration: 0.25)) {
-                                currentIndex += 1
-                            }
+                        step.completedAt = Date()
+                        if !isLast {
+                            withAnimation(.easeInOut(duration: 0.25)) { currentIndex += 1 }
                         } else {
                             successHaptic.notificationOccurred(.success)
+                            onFinishGuide()
                         }
                     } label: {
                         HStack(spacing: 6) {
-                            Text(currentIndex < steps.count - 1 ? "Completato e Avanti" : "Finito!")
-                            Image(systemName: currentIndex < steps.count - 1 ? "chevron.right" : "sparkles")
+                            if isLast {
+                                Text("Termina Guida")
+                                Image(systemName: "flag.checkered")
+                            } else if step.isCompleted {
+                                Text("Già completata · Avanti")
+                                Image(systemName: "chevron.right")
+                            } else {
+                                Image(systemName: "checkmark")
+                                Text("Completa scheda")
+                            }
                         }
                         .font(.headline.bold())
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 14)
-                        .background(Color.accentColor)
+                        .frame(height: 50)
+                        .background(step.isCompleted && !isLast ? Color.green : Color.accentColor)
                         .foregroundColor(.white)
                         .clipShape(RoundedRectangle(cornerRadius: 16))
                         .shadow(color: Color.accentColor.opacity(0.3), radius: 6, x: 0, y: 3)
                     }
+                    
+                    Button {
+                        if !isLast {
+                            withAnimation(.easeInOut(duration: 0.25)) {
+                                currentIndex += 1
+                            }
+                        }
+                    } label: {
+                        Image(systemName: "chevron.right")
+                            .font(.headline.bold())
+                            .frame(width: 52, height: 50)
+                            .background(Color(.systemGray6))
+                            .foregroundColor(!isLast ? .primary : .secondary.opacity(0.5))
+                            .clipShape(RoundedRectangle(cornerRadius: 16))
+                    }
+                    .disabled(isLast)
                 }
                 .padding(.horizontal, 16)
                 .padding(.bottom, 10)
@@ -715,11 +820,14 @@ struct GuideSingleCardView: View {
     }
 }
 
-// MARK: - Box Contatore Integrato Intelligente (con supporto Pattern Ripetuti N x M)
+// MARK: - Box Contatore Integrato (un solo contatore globale + contatori manuali)
 struct CardCounterBoxView: View {
     @Bindable var step: GuideStep
     private let haptic = UIImpactFeedbackGenerator(style: .medium)
     private let successHaptic = UINotificationFeedbackGenerator()
+    
+    @State private var showingAddExtraCounter = false
+    @State private var newExtraCounterName = ""
     
     var effectiveTarget: Int? {
         if let rows = step.rowsPerRepeat, let reps = step.totalRepeats, rows > 0, reps > 0 {
@@ -735,140 +843,52 @@ struct CardCounterBoxView: View {
         return false
     }
     
-    var isRepeatPattern: Bool {
-        if let rows = step.rowsPerRepeat, let reps = step.totalRepeats, rows > 1, reps > 1 {
-            return true
-        }
-        return false
-    }
-    
-    // Calcolo stato corrente nel ciclo ripetuto
-    var currentRepeatNumber: Int {
-        guard let rows = step.rowsPerRepeat, let reps = step.totalRepeats, rows > 0 else { return 1 }
-        return min((step.currentStepCount / rows) + 1, reps)
-    }
-    
-    var currentRowInCycle: Int {
-        guard let rows = step.rowsPerRepeat, rows > 0 else { return 1 }
-        if isTargetReached { return rows }
-        return (step.currentStepCount % rows) + 1
-    }
-    
-    var completedRepeats: Int {
-        guard let rows = step.rowsPerRepeat, rows > 0 else { return 0 }
-        return step.currentStepCount / rows
-    }
-    
-    // Calcolo maglie attuali in tempo reale dopo le ripetizioni completate
-    var liveStitchCount: Int? {
-        guard let before = step.stitchCountBefore,
-              let after = step.stitchCountAfter,
-              let reps = step.totalRepeats,
-              reps > 0,
-              before != after else { return nil }
-        let deltaPerRepeat = (after - before) / reps
-        return before + (min(completedRepeats, reps) * deltaPerRepeat)
+    /// Riga informativa (non è un contatore) sulla posizione nel ciclo ripetuto
+    var repeatPositionText: String? {
+        guard let rows = step.rowsPerRepeat, let reps = step.totalRepeats, rows > 1, reps > 1 else { return nil }
+        if isTargetReached { return "Tutte le \(reps) ripetizioni completate" }
+        let rep = min(step.currentStepCount / rows + 1, reps)
+        let row = step.currentStepCount % rows + 1
+        return "Ripetizione \(rep) di \(reps) · ferro \(row) di \(rows)"
     }
     
     var body: some View {
         VStack(spacing: 12) {
-            // Intestazione Contatore
+            // Intestazione contatore globale
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(step.counterLabel ?? "Contatore")
                         .font(.subheadline.bold())
                         .foregroundColor(.primary)
-                    
-                    if let rows = step.rowsPerRepeat, let reps = step.totalRepeats, rows > 1, reps > 1 {
-                        Text("\(reps) ripetizioni × \(rows) ferri/giri = \(reps * rows) totali")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
+                    if let info = repeatPositionText {
+                        Text(info)
+                            .font(.caption.bold())
+                            .foregroundColor(isTargetReached ? .green : .indigo)
                     } else if let target = effectiveTarget {
                         Text("Obiettivo: \(target)")
                             .font(.caption)
                             .foregroundColor(.secondary)
                     }
                 }
-                
                 Spacer()
-                
                 if step.currentStepCount > 0 {
-                    Button("Azzera") {
-                        step.currentStepCount = 0
-                    }
-                    .font(.caption.bold())
-                    .foregroundColor(.red)
+                    Button("Azzera") { step.currentStepCount = 0 }
+                        .font(.caption.bold())
+                        .foregroundColor(.red)
                 }
             }
             
-            // BANNER DINAMICO PER I PATTERN RIPETUTI (es. Ripetizione 2 di 5 • Ferro 3 di 4)
-            if let rows = step.rowsPerRepeat, let reps = step.totalRepeats, rows > 1, reps > 1 {
-                if isTargetReached {
-                    HStack {
-                        Image(systemName: "checkmark.seal.fill")
-                        Text("Tutte le \(reps) ripetizioni (\(reps * rows) ferri/giri) completate!")
-                            .font(.subheadline.bold())
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 10)
-                    .padding(.horizontal, 12)
-                    .background(Color.green.opacity(0.18))
-                    .foregroundColor(.green)
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
-                } else {
-                    VStack(spacing: 6) {
-                        HStack {
-                            Label("Ripetizione \(currentRepeatNumber) di \(reps)", systemImage: "repeat.circle.fill")
-                                .font(.subheadline.bold())
-                                .foregroundColor(.indigo)
-                            
-                            Spacer()
-                            
-                            Text("Ferro/Giro \(currentRowInCycle) di \(rows)")
-                                .font(.subheadline.bold())
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 4)
-                                .background(Color.indigo)
-                                .foregroundColor(.white)
-                                .clipShape(Capsule())
-                        }
-                        
-                        HStack {
-                            Text("Cicli finiti: \(completedRepeats)/\(reps)")
-                                .font(.caption2)
-                                .foregroundColor(.secondary)
-                            
-                            Spacer()
-                            
-                            if let liveSts = liveStitchCount {
-                                Text("Maglie sui ferri ora: \(liveSts) m")
-                                    .font(.caption2.bold())
-                                    .foregroundColor(.blue)
-                            }
-                        }
-                    }
-                    .padding(10)
-                    .background(Color.indigo.opacity(0.1))
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
-                }
-            }
-            
-            // Barra di avanzamento totale
             if let target = effectiveTarget, target > 0 {
-                let progress = min(Double(step.currentStepCount) / Double(target), 1.0)
-                ProgressView(value: progress)
+                ProgressView(value: min(Double(step.currentStepCount) / Double(target), 1.0))
                     .tint(isTargetReached ? .green : .accentColor)
             }
             
-            // Display Contatore Principale e Tasti -1 e +1
+            // Contatore globale: - valore +
             HStack(spacing: 20) {
-                // Tasto -1
                 Button {
                     TimerManager.shared.registerInteraction()
                     haptic.impactOccurred()
-                    if step.currentStepCount > 0 {
-                        step.currentStepCount -= 1
-                    }
+                    if step.currentStepCount > 0 { step.currentStepCount -= 1 }
                 } label: {
                     Image(systemName: "minus")
                         .font(.title3.bold())
@@ -881,38 +901,25 @@ struct CardCounterBoxView: View {
                 
                 Spacer()
                 
-                // Numero Totale (es. 0 / 20)
-                VStack(spacing: 2) {
-                    HStack(alignment: .firstTextBaseline, spacing: 4) {
-                        Text("\(step.currentStepCount)")
-                            .font(.system(size: 44, weight: .bold, design: .rounded))
-                            .foregroundColor(isTargetReached ? .green : .primary)
-                        
-                        if let target = effectiveTarget {
-                            Text("/ \(target)")
-                                .font(.title3.bold())
-                                .foregroundColor(.secondary)
-                        }
-                    }
-                    .contentTransition(.numericText())
-                    
-                    if isRepeatPattern {
-                        Text("ferri/giri completati")
-                            .font(.caption2)
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    Text("\(step.currentStepCount)")
+                        .font(.system(size: 44, weight: .bold, design: .rounded))
+                        .foregroundColor(isTargetReached ? .green : .primary)
+                    if let target = effectiveTarget {
+                        Text("/ \(target)")
+                            .font(.title3.bold())
                             .foregroundColor(.secondary)
                     }
                 }
+                .contentTransition(.numericText())
                 
                 Spacer()
                 
-                // Tasto +1 Gigante
                 Button {
                     TimerManager.shared.registerInteraction()
                     haptic.impactOccurred()
                     step.currentStepCount += 1
-                    if isTargetReached {
-                        successHaptic.notificationOccurred(.success)
-                    }
+                    if isTargetReached { successHaptic.notificationOccurred(.success) }
                 } label: {
                     Image(systemName: "plus")
                         .font(.title2.bold())
@@ -924,88 +931,137 @@ struct CardCounterBoxView: View {
                 }
             }
             
-            // Pulsanti Rapidi Extra:
-            // - Per Pattern Ripetuti: "+1 Ripetizione (+N ferri)"
-            // - Per Avvio/Intreccio alto (>= 50 maglie): "-10" e "+10 maglie"
-            if let rows = step.rowsPerRepeat, let reps = step.totalRepeats, rows > 1, reps > 1 {
-                HStack(spacing: 12) {
-                    Button {
-                        TimerManager.shared.registerInteraction()
-                        haptic.impactOccurred()
-                        step.currentStepCount = max(0, step.currentStepCount - rows)
-                    } label: {
-                        Text("-1 Ripetizione (-\(rows))")
-                            .font(.caption.bold())
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 8)
-                            .background(Color(.systemGray5))
-                            .foregroundColor(.primary)
-                            .clipShape(RoundedRectangle(cornerRadius: 10))
-                    }
-                    .disabled(step.currentStepCount < rows)
-                    
-                    Button {
-                        TimerManager.shared.registerInteraction()
-                        haptic.impactOccurred()
-                        if let target = effectiveTarget {
-                            step.currentStepCount = min(target, step.currentStepCount + rows)
-                        } else {
-                            step.currentStepCount += rows
-                        }
-                        if isTargetReached {
-                            successHaptic.notificationOccurred(.success)
-                        }
-                    } label: {
-                        Text("+1 Ripetizione (+\(rows))")
-                            .font(.caption.bold())
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 8)
-                            .background(Color.indigo.opacity(0.15))
-                            .foregroundColor(.indigo)
-                            .clipShape(RoundedRectangle(cornerRadius: 10))
-                    }
-                }
-            } else if let target = effectiveTarget, target >= 50 {
-                HStack(spacing: 12) {
-                    Button {
-                        TimerManager.shared.registerInteraction()
-                        haptic.impactOccurred()
-                        step.currentStepCount = max(0, step.currentStepCount - 10)
-                    } label: {
-                        Text("-10 maglie")
-                            .font(.caption.bold())
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 8)
-                            .background(Color(.systemGray5))
-                            .foregroundColor(.primary)
-                            .clipShape(RoundedRectangle(cornerRadius: 10))
-                    }
-                    .disabled(step.currentStepCount == 0)
-                    
-                    Button {
-                        TimerManager.shared.registerInteraction()
-                        haptic.impactOccurred()
-                        step.currentStepCount = min(target, step.currentStepCount + 10)
-                        if isTargetReached {
-                            successHaptic.notificationOccurred(.success)
-                        }
-                    } label: {
-                        Text("+10 maglie")
-                            .font(.caption.bold())
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 8)
-                            .background(Color.accentColor.opacity(0.15))
-                            .foregroundColor(.accentColor)
-                            .clipShape(RoundedRectangle(cornerRadius: 10))
-                    }
+            // Contatori aggiuntivi creati manualmente dall'utente
+            if !step.extraCounterLabels.isEmpty {
+                Divider()
+                ForEach(Array(step.extraCounterLabels.enumerated()), id: \.offset) { idx, label in
+                    ExtraCounterRow(
+                        label: label,
+                        value: idx < step.extraCounterValues.count ? step.extraCounterValues[idx] : 0,
+                        onMinus: { changeExtra(at: idx, by: -1) },
+                        onPlus: { changeExtra(at: idx, by: 1) },
+                        onReset: { setExtra(at: idx, to: 0) },
+                        onDelete: { removeExtra(at: idx) }
+                    )
                 }
             }
+            
+            Button {
+                newExtraCounterName = ""
+                showingAddExtraCounter = true
+            } label: {
+                Label("Aggiungi contatore", systemImage: "plus.circle")
+                    .font(.caption.bold())
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 6)
+            }
+            .buttonStyle(.plain)
+            .foregroundColor(.accentColor)
         }
         .padding(16)
         .background(Color(.tertiarySystemGroupedBackground))
         .cornerRadius(18)
+        .alert("Nuovo contatore", isPresented: $showingAddExtraCounter) {
+            TextField("Nome (es. Aumenti, Motivo, Trecce)", text: $newExtraCounterName)
+            Button("Annulla", role: .cancel) {}
+            Button("Aggiungi") {
+                let name = newExtraCounterName.trimmingCharacters(in: .whitespaces)
+                step.extraCounterLabels.append(name.isEmpty ? "Contatore \(step.extraCounterLabels.count + 1)" : name)
+                step.extraCounterValues.append(0)
+            }
+        }
+    }
+    
+    private func normalizedValues() -> [Int] {
+        var values = step.extraCounterValues
+        while values.count < step.extraCounterLabels.count { values.append(0) }
+        return values
+    }
+    
+    private func changeExtra(at idx: Int, by delta: Int) {
+        TimerManager.shared.registerInteraction()
+        haptic.impactOccurred()
+        var values = normalizedValues()
+        guard idx < values.count else { return }
+        values[idx] = max(0, values[idx] + delta)
+        step.extraCounterValues = values
+    }
+    
+    private func setExtra(at idx: Int, to value: Int) {
+        var values = normalizedValues()
+        guard idx < values.count else { return }
+        values[idx] = value
+        step.extraCounterValues = values
+    }
+    
+    private func removeExtra(at idx: Int) {
+        var labels = step.extraCounterLabels
+        var values = normalizedValues()
+        guard idx < labels.count else { return }
+        labels.remove(at: idx)
+        values.remove(at: idx)
+        step.extraCounterLabels = labels
+        step.extraCounterValues = values
     }
 }
+
+struct ExtraCounterRow: View {
+    let label: String
+    let value: Int
+    var onMinus: () -> Void
+    var onPlus: () -> Void
+    var onReset: () -> Void
+    var onDelete: () -> Void
+    
+    var body: some View {
+        HStack(spacing: 12) {
+            Menu {
+                Button("Azzera", systemImage: "arrow.counterclockwise", action: onReset)
+                Button("Elimina contatore", systemImage: "trash", role: .destructive, action: onDelete)
+            } label: {
+                HStack(spacing: 4) {
+                    Text(label)
+                        .font(.subheadline)
+                        .foregroundColor(.primary)
+                        .lineLimit(1)
+                    Image(systemName: "ellipsis")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                }
+            }
+            
+            Spacer()
+            
+            Button(action: onMinus) {
+                Image(systemName: "minus")
+                    .font(.caption.bold())
+                    .frame(width: 32, height: 32)
+                    .background(Color(.systemGray5))
+                    .foregroundColor(.primary)
+                    .clipShape(Circle())
+            }
+            .buttonStyle(.plain)
+            .disabled(value == 0)
+            
+            Text("\(value)")
+                .font(.system(.title3, design: .rounded, weight: .bold))
+                .monospacedDigit()
+                .frame(minWidth: 36)
+                .contentTransition(.numericText())
+            
+            Button(action: onPlus) {
+                Image(systemName: "plus")
+                    .font(.caption.bold())
+                    .frame(width: 32, height: 32)
+                    .background(Color.accentColor.opacity(0.18))
+                    .foregroundColor(.accentColor)
+                    .clipShape(Circle())
+            }
+            .buttonStyle(.plain)
+        }
+    }
+}
+
 
 // MARK: - Foglio per Aggiungere Manualmente una Sezione o Passaggio
 struct AddGuideStepSheet: View {
@@ -1404,6 +1460,7 @@ struct GuideStepRow: View {
         HStack(alignment: .top, spacing: 12) {
             Button {
                 step.isCompleted.toggle()
+                step.completedAt = step.isCompleted ? Date() : nil
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
             } label: {
                 Image(systemName: step.isCompleted ? "checkmark.circle.fill" : "circle")
@@ -1575,7 +1632,7 @@ struct GenerateGuideSheet: View {
                     for section in response.sections {
                         for stepData in section.steps {
                             let step = GuideStep(
-                                sectionTitle: section.name,
+                                sectionTitle: GeminiService.cleanSectionName(section.name),
                                 title: stepData.title ?? "",
                                 stepType: stepData.stepType ?? "single_action",
                                 instructionText: stepData.instruction,
