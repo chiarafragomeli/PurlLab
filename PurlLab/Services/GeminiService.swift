@@ -24,6 +24,7 @@ struct GeneratedStep: Codable {
 
 enum GeminiError: LocalizedError {
     case missingApiKey
+    case invalidApiKeyFormat
     case invalidURL
     case networkError(String)
     case parsingError(String)
@@ -32,6 +33,8 @@ enum GeminiError: LocalizedError {
         switch self {
         case .missingApiKey:
             return "Chiave API di Gemini non trovata. Inseriscila nelle Impostazioni."
+        case .invalidApiKeyFormat:
+            return "La chiave API non è valida: le chiavi di Google AI Studio iniziano sempre con 'AIzaSy'. Creane una gratuitamente su aistudio.google.com"
         case .invalidURL:
             return "URL dell'endpoint non valido."
         case .networkError(let msg):
@@ -47,8 +50,13 @@ final class GeminiService: @unchecked Sendable {
     private init() {}
     
     func generateGuide(from pdfData: Data, targetSize: String) async throws -> GeneratedGuideResponse {
-        guard let apiKey = KeychainHelper.shared.getGeminiApiKey(), !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        guard let rawKey = KeychainHelper.shared.getGeminiApiKey(), !rawKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw GeminiError.missingApiKey
+        }
+        
+        let apiKey = rawKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !apiKey.starts(with: "AIzaSy") {
+            throw GeminiError.invalidApiKeyFormat
         }
         
         let urlString = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=\(apiKey)"
@@ -161,6 +169,7 @@ final class GeminiService: @unchecked Sendable {
         
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
+        request.timeoutInterval = 120
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONSerialization.data(withJSONObject: requestBody)
         

@@ -10,13 +10,20 @@ struct SettingsView: View {
         NavigationStack {
             Form {
                 Section {
-                    SecureField("Chiave API di Gemini", text: $apiKey)
+                    SecureField("Chiave API di Gemini (inizia con AIzaSy...)", text: $apiKey)
                         .textContentType(.password)
                         .autocorrectionDisabled()
                         .textInputAutocapitalization(.never)
                     
+                    if !apiKey.isEmpty && !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).starts(with: "AIzaSy") {
+                        Label("La chiave deve iniziare con 'AIzaSy'. Verificala su Google AI Studio.", systemImage: "exclamationmark.triangle.fill")
+                            .font(.caption)
+                            .foregroundColor(.red)
+                    }
+                    
                     Button {
-                        if KeychainHelper.shared.saveGeminiApiKey(apiKey.trimmingCharacters(in: .whitespacesAndNewlines)) {
+                        let cleanKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+                        if KeychainHelper.shared.saveGeminiApiKey(cleanKey) {
                             isKeySaved = true
                         }
                     } label: {
