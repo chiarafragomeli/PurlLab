@@ -11,6 +11,7 @@ struct ProjectListView: View {
     @State private var showingManualNewProject = false
     @State private var newProjectTitle = ""
     @State private var newProjectDesigner = ""
+    @AppStorage("didAutoLoadSampleV2") private var didAutoLoadSampleV2 = false
     
     var body: some View {
         NavigationStack {
@@ -55,6 +56,12 @@ struct ProjectListView: View {
                 }
             }
             .navigationTitle("I Miei Progetti")
+            .onAppear {
+                if projects.isEmpty && !didAutoLoadSampleV2 {
+                    didAutoLoadSampleV2 = true
+                    loadSamplePattern()
+                }
+            }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button {
@@ -111,7 +118,6 @@ struct ProjectListView: View {
                         title: newProjectTitle.isEmpty ? "Nuovo Lavoro" : newProjectTitle,
                         designer: newProjectDesigner
                     )
-                    // Add default counter
                     let defaultCounter = RowCounter(title: "Ferri Principali")
                     defaultCounter.project = project
                     project.counters.append(defaultCounter)
@@ -148,11 +154,10 @@ struct ProjectListView: View {
         c1.project = project
         project.counters.append(c1)
         
-        let c2 = RowCounter(title: "Aumenti Raglan", targetCount: 29)
+        let c2 = RowCounter(title: "Aumenti Raglan (58 giri)", targetCount: 58)
         c2.project = project
         project.counters.append(c2)
         
-        // Carica la guida pre-generata con Gemini per la taglia M
         if let guideUrl = Bundle.main.url(forResource: "NoFrillsGuide_M", withExtension: "json"),
            let guideData = try? Data(contentsOf: guideUrl),
            let guide = try? JSONDecoder().decode(GeneratedGuideResponse.self, from: guideData) {
@@ -161,7 +166,14 @@ struct ProjectListView: View {
                 for stepData in section.steps {
                     let step = GuideStep(
                         sectionTitle: section.name,
+                        title: stepData.title ?? "",
+                        stepType: stepData.stepType ?? "single_action",
                         instructionText: stepData.instruction,
+                        subSteps: stepData.subSteps ?? [],
+                        repeatVariations: stepData.repeatVariations ?? [],
+                        rowsPerRepeat: stepData.rowsPerRepeat,
+                        totalRepeats: stepData.totalRepeats,
+                        stitchCountBefore: stepData.stitchCountBefore,
                         stitchCountAfter: stepData.stitchCountAfter,
                         targetMeasureCm: stepData.targetMeasureCm,
                         sourcePage: stepData.sourcePage,
@@ -241,6 +253,7 @@ struct ProjectRowView: View {
                 .font(.subheadline)
                 
                 HStack(spacing: 12) {
+                    Label("\(project.guideSteps.count) schede", systemImage: "rectangle.stack")
                     Label("\(project.counters.count) contatori", systemImage: "number.circle")
                     if project.totalSecondsWorked > 0 {
                         Label(TimerManager.shared.formatTime(project.totalSecondsWorked), systemImage: "clock")

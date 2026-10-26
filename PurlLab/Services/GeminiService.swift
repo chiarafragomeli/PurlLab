@@ -15,7 +15,14 @@ struct GeneratedSection: Codable {
 }
 
 struct GeneratedStep: Codable {
+    let title: String?
+    let stepType: String? // "info", "single_action", "repeat_pattern", "work_to_measure"
     let instruction: String
+    let subSteps: [String]?
+    let repeatVariations: [String]?
+    let rowsPerRepeat: Int?
+    let totalRepeats: Int?
+    let stitchCountBefore: Int?
     let stitchCountAfter: Int?
     let targetMeasureCm: Double?
     let hasCounter: Bool?
@@ -62,48 +69,54 @@ final class GeminiService: @unchecked Sendable {
             throw GeminiError.invalidApiKeyFormat
         }
         
-        let urlString = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=\(apiKey)"
-        guard let url = URL(string: urlString) else {
-            throw GeminiError.invalidURL
-        }
-        
         let base64Pdf = pdfData.base64EncodedString()
         
         let systemPrompt = """
-        Sei un'esperta direttrice tecnica ed editor di pattern di maglia (knitting).
-        Il tuo compito è convertire il pattern PDF fornito in una guida passo-passo rigorosa, chiara e cronologica in LINGUA ITALIANA.
+        Sei una maestra di maglia (knitting) ed editor tecnica esperta.
+        Il tuo compito è trasformare il pattern PDF in una GUIDA OPERATIVA INTERATTIVA a "Scheda Singola" (una card per ogni fase operativa reale) in LINGUA ITALIANA per la TAGLIA "\(targetSize)".
         
-        TAGLIA RICHIESTA DALL'UTENTE: "\(targetSize)".
+        RAGIONA SU COSA DEVE FARE FISICAMENTE CHI LAVORA A MAGLIA:
         
-        REGOLE FONDAMENTALI:
-        1. Filtra ed elimina tutti i numeri tra parentesi che non appartengono alla taglia scelta "\(targetSize)". Mostra solo ed esclusivamente i numeri corretti per questa taglia (es. numero di maglie da avviare, ferri, ripetizioni).
-        2. Glossario tecnico obbligatorio dall'inglese all'italiano:
-           - k (knit) -> dir (diritto)
-           - p (purl) -> rov (rovescio)
-           - stockinette stitch -> maglia rasata
-           - garter stitch -> maglia legaccio
-           - rib / ribbing -> coste (es. 1/1 o 2/2)
-           - k2tog -> 2 dir ins (2 maglie insieme a diritto)
-           - k2tog tbl / ssk -> acc (accavallato semplice) o 2 dir ins ritorto
-           - M1R / M1L -> AID (aumento intercalare destro) / AIS (aumento intercalare sinistro)
-           - yo (yarn over) -> gett (gettato)
-           - cast on / bind off -> avvia / intreccia (chiudi)
-           - marker -> marcapunti
-           - short rows / German short rows -> ferri accorciati / ferri accorciati alla tedesca
-        3. Suddividi il lavoro in sezioni logiche (es: Avvio e Collo, Sprone e Aumenti, Separazione Maniche, Corpo, Maniche).
-        4. Ogni step deve avere:
-           - instruction: testo chiaro in italiano
-           - stitchCountAfter: numero totale di maglie sul ferro al termine dello step (se applicabile o calcolabile)
-           - targetMeasureCm: misura in cm da raggiungere (se applicabile, es. 4 cm a coste)
-           - hasCounter: booleano (TRUE solo se lo step richiede di contare attivamente maglie avviate, ripetizioni di ferri o calature; FALSE per note, materiali, cambio ferri, marcapunti o istruzioni basate solo su centimetri)
-           - counterLabel: etichetta breve del contatore se hasCounter è true (es. "Maglie Avviate", "Giri Aumenti", "Calature")
-           - targetStepCount: il numero obiettivo intero se hasCounter è true (es. 114, 29, 18)
-           - sourcePage: numero della pagina del PDF da cui è tratta l'istruzione (1-based)
-           - sourceQuote: breve frase originale in inglese dal PDF
-        5. Rispondi ESCLUSIVAMENTE con un oggetto JSON valido conforme allo schema specificato.
+        1. VIETATO SPEZZETTARE LE FRASI INTRODUTTIVE IN CARD VUOTE:
+           - NON creare MAI una card che dice solo "Lavorare i ferri accorciati come segue:" lasciando i passaggi in card separate.
+           - Ogni card deve essere un'unità di lavoro autonoma e completa.
+        
+        2. RICONOSCIMENTO DEI PATTERN RIPETUTI (stepType = "repeat_pattern"):
+           - Quando il pattern chiede di ripetere una sequenza di ferri o giri più volte, raggruppa l'INTERO ciclo ripetuto in UN'UNICA CARD di tipo "repeat_pattern"!
+           - Esempio 1 (Ferri Accorciati): Se il pattern descrive i Passi/Ferri 1-4 e poi dice "Ripetere i Passi 1-4 per altre 4 volte" (5 volte in totale):
+             * Crea UN'UNICA CARD intitolata es. "Ferri Accorciati sullo Sprone (5 ripetizioni = 20 ferri)".
+             * rowsPerRepeat = 4 (i 4 ferri del ciclo)
+             * totalRepeats = 5 (la prima volta + le altre 4 ripetizioni = 5 cicli totali)
+             * targetStepCount = 20 (perché 5 ripetizioni × 4 ferri = 20 ferri totali lavorati!)
+             * hasCounter = true, counterLabel = "Ferri Accorciati (5 cicli da 4 ferri)"
+             * subSteps = array con la descrizione esatta di ciascuno dei 4 ferri: ["Ferro 1 (Dir): ...", "Ferro 2 (Rov): ...", "Ferro 3 (Rov): ...", "Ferro 4 (Dir): ..."]
+             * repeatVariations = array con cosa cambia in ogni ripetizione (es. ["Ripetizione 1 (Ferri 1-4): ...", "Ripetizione 2 (Ferri 5-8): ...", ...])
+           - Esempio 2 (Aumenti Raglan in tondo): Se il pattern dice "*Giro 1 con 8 aumenti raglan, Giro 2 tutto a diritto*, ripetere per un totale di 29 volte":
+             * Crea UN'UNICA CARD con stepType = "repeat_pattern".
+             * rowsPerRepeat = 2, totalRepeats = 29, targetStepCount = 58 (29 × 2 = 58 giri totali!).
+             * subSteps = ["Giro 1 (Aumenti Raglan - +8 maglie): ...", "Giro 2 (Giro pari): Lavorare tutto a diritto senza aumenti."]
+           - Esempio 3 (Diminuzioni Manica): Se il pattern dice "Diminuire ogni 6° giro per 18 volte":
+             * Crea UN'UNICA CARD con stepType = "repeat_pattern".
+             * rowsPerRepeat = 6, totalRepeats = 18, targetStepCount = 108 (18 × 6 = 108 giri totali!).
+             * subSteps = ["Giri 1-5: Lavorare a diritto in tondo senza diminuzioni.", "Giro 6 (Giro di diminuzione - -2 maglie): ..."]
+        
+        3. DECIDERE QUANDO METTERE IL CONTATORE (hasCounter = true / false):
+           - hasCounter = TRUE quando l'utente deve contare attivamente:
+             * Avvio maglie (cast on): targetStepCount = numero maglie da avviare (es. 114), counterLabel = "Maglie Avviate".
+             * Pattern ripetuti (repeat_pattern): targetStepCount = rowsPerRepeat * totalRepeats (es. 20 ferri, 58 giri, 108 giri).
+             * Lavorazione a centimetri (work_to_measure, es. "Lavorare 4 cm a coste 1/1" o "7 cm a coste"): imposta hasCounter = true e calcola targetStepCount = numero stimato di giri in base al campione del pattern (es. 28 ferri = 10 cm -> 4 cm = 11 giri; 7 cm = 20 giri), così l'utente può contare i giri lavorati!
+             * Giro singolo con serie di diminuzioni/aumenti (es. "*7 dir, 2 dir ins* per 25 volte + 1 volta"): hasCounter = true, targetStepCount = numero totale di diminuzioni (es. 26).
+             * Intreccio maglie (bind off): hasCounter = true, targetStepCount = numero maglie da intrecciare.
+           - hasCounter = FALSE SOLO per:
+             * Informazioni generali (campione, materiali, filato) -> stepType = "info".
+             * Posizionamento iniziale dei marcapunti o semplice cambio ferri senza lavorazione prolungata.
+        
+        4. FILTRO TAGLIA E GLOSSARIO ITALIANO:
+           - Mostra SOLO i numeri per la taglia "\(targetSize)".
+           - Usa i termini italiani: dir (diritto), rov (rovescio), 2 dir ins (k2tog), 2 dir ins ritorto / acc (ssk / k2tog tbl), AID (M1R), AIS (M1L), MP (marcapunti), ferri accorciati alla tedesca (German short rows).
         """
         
-        let userPrompt = "Analizza questo pattern per la taglia \(targetSize) e genera la guida JSON passo-passo completa in italiano."
+        let userPrompt = "Analizza il pattern PDF per la taglia \(targetSize) e genera la guida operativa JSON completa in italiano, calcolando con precisione ferri totali, ripetizioni e maglie."
         
         let jsonSchema: [String: Any] = [
             "type": "OBJECT",
@@ -127,7 +140,23 @@ final class GeminiService: @unchecked Sendable {
                                 "items": [
                                     "type": "OBJECT",
                                     "properties": [
+                                        "title": ["type": "STRING"],
+                                        "stepType": [
+                                            "type": "STRING",
+                                            "enum": ["info", "single_action", "repeat_pattern", "work_to_measure"]
+                                        ],
                                         "instruction": ["type": "STRING"],
+                                        "subSteps": [
+                                            "type": "ARRAY",
+                                            "items": ["type": "STRING"]
+                                        ],
+                                        "repeatVariations": [
+                                            "type": "ARRAY",
+                                            "items": ["type": "STRING"]
+                                        ],
+                                        "rowsPerRepeat": ["type": "INTEGER"],
+                                        "totalRepeats": ["type": "INTEGER"],
+                                        "stitchCountBefore": ["type": "INTEGER"],
                                         "stitchCountAfter": ["type": "INTEGER"],
                                         "targetMeasureCm": ["type": "NUMBER"],
                                         "hasCounter": ["type": "BOOLEAN"],
@@ -136,7 +165,7 @@ final class GeminiService: @unchecked Sendable {
                                         "sourcePage": ["type": "INTEGER"],
                                         "sourceQuote": ["type": "STRING"]
                                     ],
-                                    "required": ["instruction", "hasCounter"]
+                                    "required": ["title", "stepType", "instruction", "hasCounter"]
                                 ]
                             ]
                         ],
@@ -172,49 +201,71 @@ final class GeminiService: @unchecked Sendable {
             "generationConfig": [
                 "response_mime_type": "application/json",
                 "response_schema": jsonSchema,
-                "temperature": 0.1
+                "temperature": 0.1,
+                "thinkingConfig": [
+                    "thinkingBudget": 4096
+                ]
             ]
         ]
         
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.timeoutInterval = 120
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue(apiKey, forHTTPHeaderField: "x-goog-api-key")
-        request.httpBody = try JSONSerialization.data(withJSONObject: requestBody)
+        let bodyData = try JSONSerialization.data(withJSONObject: requestBody)
+        let candidateModels = ["gemini-3-flash-preview", "gemini-2.5-flash"]
+        var lastError: Error?
         
-        let (data, response) = try await URLSession.shared.data(for: request)
-        
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw GeminiError.networkError("Risposta del server non valida")
-        }
-        
-        guard httpResponse.statusCode == 200 else {
-            let errorText = String(data: data, encoding: .utf8) ?? "Status code: \(httpResponse.statusCode)"
-            throw GeminiError.networkError("HTTP \(httpResponse.statusCode): \(errorText)")
-        }
-        
-        // Parsing Gemini response structure
-        struct GeminiAPIResponse: Decodable {
-            struct Candidate: Decodable {
-                struct Content: Decodable {
-                    struct Part: Decodable {
-                        let text: String?
-                    }
-                    let parts: [Part]?
+        for model in candidateModels {
+            let urlString = "https://generativelanguage.googleapis.com/v1beta/models/\(model):generateContent?key=\(apiKey)"
+            guard let url = URL(string: urlString) else { continue }
+            
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.timeoutInterval = 150
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.setValue(apiKey, forHTTPHeaderField: "x-goog-api-key")
+            request.httpBody = bodyData
+            
+            do {
+                let (data, response) = try await URLSession.shared.data(for: request)
+                guard let httpResponse = response as? HTTPURLResponse else {
+                    continue
                 }
-                let content: Content?
+                
+                if httpResponse.statusCode == 200 {
+                    struct GeminiAPIResponse: Decodable {
+                        struct Candidate: Decodable {
+                            struct Content: Decodable {
+                                struct Part: Decodable {
+                                    let text: String?
+                                    let thought: Bool?
+                                }
+                                let parts: [Part]?
+                            }
+                            let content: Content?
+                        }
+                        let candidates: [Candidate]?
+                    }
+                    
+                    let apiResponse = try JSONDecoder().decode(GeminiAPIResponse.self, from: data)
+                    let parts = apiResponse.candidates?.first?.content?.parts ?? []
+                    let textPart = parts.last(where: { $0.thought != true && $0.text != nil }) ?? parts.last
+                    
+                    guard let jsonString = textPart?.text,
+                          let jsonData = jsonString.data(using: .utf8) else {
+                        throw GeminiError.parsingError("Nessun testo JSON generato da Gemini")
+                    }
+                    
+                    return try JSONDecoder().decode(GeneratedGuideResponse.self, from: jsonData)
+                } else {
+                    let errorText = String(data: data, encoding: .utf8) ?? "Status code: \(httpResponse.statusCode)"
+                    lastError = GeminiError.networkError("HTTP \(httpResponse.statusCode): \(errorText)")
+                    // Prova il modello successivo se 503 o 429
+                    continue
+                }
+            } catch {
+                lastError = error
+                continue
             }
-            let candidates: [Candidate]?
         }
         
-        let apiResponse = try JSONDecoder().decode(GeminiAPIResponse.self, from: data)
-        guard let jsonString = apiResponse.candidates?.first?.content?.parts?.first?.text,
-              let jsonData = jsonString.data(using: .utf8) else {
-            throw GeminiError.parsingError("Nessun testo JSON generato da Gemini")
-        }
-        
-        let guideResponse = try JSONDecoder().decode(GeneratedGuideResponse.self, from: jsonData)
-        return guideResponse
+        throw lastError ?? GeminiError.networkError("Impossibile contattare i modelli Gemini.")
     }
 }

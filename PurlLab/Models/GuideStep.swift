@@ -5,7 +5,14 @@ import SwiftData
 final class GuideStep {
     var id: UUID
     var sectionTitle: String
+    var title: String = ""
+    var stepType: String = "single_action" // "info", "single_action", "repeat_pattern", "work_to_measure"
     var instructionText: String
+    var subSteps: [String] = []
+    var repeatVariations: [String] = []
+    var rowsPerRepeat: Int?
+    var totalRepeats: Int?
+    var stitchCountBefore: Int?
     var stitchCountAfter: Int?
     var targetMeasureCm: Double?
     var sourcePage: Int?
@@ -21,7 +28,14 @@ final class GuideStep {
     
     init(
         sectionTitle: String,
+        title: String = "",
+        stepType: String = "single_action",
         instructionText: String,
+        subSteps: [String] = [],
+        repeatVariations: [String] = [],
+        rowsPerRepeat: Int? = nil,
+        totalRepeats: Int? = nil,
+        stitchCountBefore: Int? = nil,
         stitchCountAfter: Int? = nil,
         targetMeasureCm: Double? = nil,
         sourcePage: Int? = nil,
@@ -35,7 +49,14 @@ final class GuideStep {
     ) {
         self.id = UUID()
         self.sectionTitle = sectionTitle
+        self.title = title
+        self.stepType = stepType
         self.instructionText = instructionText
+        self.subSteps = subSteps
+        self.repeatVariations = repeatVariations
+        self.rowsPerRepeat = rowsPerRepeat
+        self.totalRepeats = totalRepeats
+        self.stitchCountBefore = stitchCountBefore
         self.stitchCountAfter = stitchCountAfter
         self.targetMeasureCm = targetMeasureCm
         self.sourcePage = sourcePage

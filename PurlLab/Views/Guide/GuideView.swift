@@ -3,7 +3,7 @@ import SwiftData
 
 enum GuideDisplayMode: String, CaseIterable {
     case card = "Card Singola"
-    case list = "Elenco"
+    case list = "Elenco Sezioni"
 }
 
 struct GuideView: View {
@@ -53,7 +53,7 @@ struct GuideView: View {
                     ContentUnavailableView {
                         Label("Nessuna Guida", systemImage: "sparkles")
                     } description: {
-                        Text("Carica la guida del No Frills Sweater, generane una nuova da PDF con Gemini o aggiungi manualmente sezioni e passaggi.")
+                        Text("Carica la guida operativa del No Frills Sweater, generane una nuova da PDF con Gemini o aggiungi manualmente sezioni e passaggi.")
                     } actions: {
                         VStack(spacing: 12) {
                             Button {
@@ -89,7 +89,7 @@ struct GuideView: View {
                     }
                 } else {
                     VStack(spacing: 0) {
-                        // Selettore Card Singola / Elenco
+                        // Selettore Card Singola / Elenco Sezioni
                         Picker("Modalità", selection: $displayMode) {
                             ForEach(GuideDisplayMode.allCases, id: \.self) { mode in
                                 Text(mode.rawValue).tag(mode)
@@ -98,12 +98,13 @@ struct GuideView: View {
                         .pickerStyle(.segmented)
                         .padding(.horizontal)
                         .padding(.top, 8)
-                        .padding(.bottom, 12)
+                        .padding(.bottom, 10)
                         
                         if displayMode == .card {
                             // Modalità Scheda Singola (Focus Mode)
                             GuideSingleCardView(
                                 steps: sortedSteps,
+                                orderedSections: orderedSections,
                                 currentIndex: $currentStepIndex,
                                 onNavigateToPage: onSelectPdfPage,
                                 onDeleteStep: { step in
@@ -119,6 +120,12 @@ struct GuideView: View {
                                             GuideStepRow(
                                                 step: step,
                                                 onNavigateToPage: onSelectPdfPage,
+                                                onJumpToCard: {
+                                                    if let idx = sortedSteps.firstIndex(where: { $0.id == step.id }) {
+                                                        currentStepIndex = idx
+                                                        displayMode = .card
+                                                    }
+                                                },
                                                 onDelete: {
                                                     deleteStep(step)
                                                 }
@@ -154,12 +161,11 @@ struct GuideView: View {
                     }
                 }
             }
-            .navigationTitle(displayMode == .card && !project.guideSteps.isEmpty ? "Guida Attiva" : "Guida Passo-Passo")
+            .navigationTitle(displayMode == .card && !project.guideSteps.isEmpty ? "Guida Interattiva" : "Guida Passo-Passo")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     HStack(spacing: 12) {
-                        // Tasto rapido Aggiungi Sezione o Passaggio
                         Button {
                             showingAddStepSheet = true
                         } label: {
@@ -284,7 +290,14 @@ struct GuideView: View {
             for stepData in section.steps {
                 let step = GuideStep(
                     sectionTitle: section.name,
+                    title: stepData.title ?? "",
+                    stepType: stepData.stepType ?? "single_action",
                     instructionText: stepData.instruction,
+                    subSteps: stepData.subSteps ?? [],
+                    repeatVariations: stepData.repeatVariations ?? [],
+                    rowsPerRepeat: stepData.rowsPerRepeat,
+                    totalRepeats: stepData.totalRepeats,
+                    stitchCountBefore: stepData.stitchCountBefore,
                     stitchCountAfter: stepData.stitchCountAfter,
                     targetMeasureCm: stepData.targetMeasureCm,
                     sourcePage: stepData.sourcePage,
@@ -304,9 +317,10 @@ struct GuideView: View {
     }
 }
 
-// MARK: - Vista Card Singola
+// MARK: - Vista Card Singola (Focus Mode)
 struct GuideSingleCardView: View {
     let steps: [GuideStep]
+    let orderedSections: [GuideView.SectionGroup]
     @Binding var currentIndex: Int
     var onNavigateToPage: (Int) -> Void
     var onDeleteStep: (GuideStep) -> Void
@@ -320,43 +334,102 @@ struct GuideSingleCardView: View {
         return steps[currentIndex]
     }
     
+    // Calcola quale subStep è attivo se siamo in un pattern ripetuto
+    private func isSubStepActive(index: Int, for step: GuideStep) -> Bool {
+        guard let rowsPerRep = step.rowsPerRepeat, rowsPerRep > 1, !step.subSteps.isEmpty else {
+            return false
+        }
+        if let target = step.targetStepCount, step.currentStepCount >= target {
+            return false
+        }
+        let currentRowInCycle = (step.currentStepCount % rowsPerRep) + 1 // 1..rowsPerRep
+        if step.subSteps.count == rowsPerRep {
+            return index == (currentRowInCycle - 1)
+        } else if rowsPerRep == 6 && step.subSteps.count == 2 {
+            // Caso tipico maniche: Giri 1-5 (index 0) e Giro 6 di diminuzione (index 1)
+            return currentRowInCycle < 6 ? (index == 0) : (index == 1)
+        }
+        return false
+    }
+    
+    // Calcola quale repeatVariation è attiva
+    private func isVariationActive(index: Int, for step: GuideStep) -> Bool {
+        guard let rowsPerRep = step.rowsPerRepeat, rowsPerRep > 0, !step.repeatVariations.isEmpty else {
+            return false
+        }
+        if let target = step.targetStepCount, step.currentStepCount >= target {
+            return false
+        }
+        let currentRepeatZeroBased = step.currentStepCount / rowsPerRep
+        return index == currentRepeatZeroBased
+    }
+    
     var body: some View {
         if let step = currentStep {
-            VStack(spacing: 16) {
-                // Indicatore di progresso in alto
-                VStack(spacing: 6) {
+            VStack(spacing: 12) {
+                // Selettore rapido Sezione + Progresso
+                VStack(spacing: 8) {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            ForEach(orderedSections) { group in
+                                let isCurrentSection = group.title == step.sectionTitle
+                                Button {
+                                    if let firstStep = group.steps.first,
+                                       let idx = steps.firstIndex(where: { $0.id == firstStep.id }) {
+                                        withAnimation(.easeInOut(duration: 0.2)) {
+                                            currentIndex = idx
+                                        }
+                                    }
+                                } label: {
+                                    Text(group.title)
+                                        .font(.caption.bold())
+                                        .padding(.horizontal, 12)
+                                        .padding(.vertical, 6)
+                                        .background(isCurrentSection ? Color.accentColor : Color(.systemGray5))
+                                        .foregroundColor(isCurrentSection ? .white : .secondary)
+                                        .clipShape(Capsule())
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        .padding(.horizontal, 16)
+                    }
+                    
                     HStack {
                         Text(step.sectionTitle.uppercased())
-                            .font(.caption.bold())
+                            .font(.caption2.bold())
                             .foregroundColor(.accentColor)
                         
                         Spacer()
                         
-                        Text("Passo \(currentIndex + 1) di \(steps.count)")
-                            .font(.caption.monospacedDigit())
+                        Text("Scheda \(currentIndex + 1) di \(steps.count)")
+                            .font(.caption2.monospacedDigit())
                             .foregroundColor(.secondary)
                     }
+                    .padding(.horizontal, 20)
                     
                     ProgressView(value: Double(currentIndex + 1), total: Double(steps.count))
                         .tint(.accentColor)
+                        .padding(.horizontal, 20)
                 }
-                .padding(.horizontal, 20)
                 
                 // La Card Principale
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 18) {
-                        // Badge superiore e tasto Modifica
-                        HStack {
+                    VStack(alignment: .leading, spacing: 16) {
+                        // Top Bar della Card: Tipo Step, Pagina PDF, Modifica
+                        HStack(spacing: 8) {
+                            stepTypeBadge(for: step)
+                            
                             if let page = step.sourcePage {
                                 Button {
                                     onNavigateToPage(page)
                                 } label: {
                                     HStack(spacing: 4) {
                                         Image(systemName: "doc.text")
-                                        Text("PDF Pagina \(page)")
+                                        Text("Pag. \(page)")
                                     }
                                     .font(.caption.bold())
-                                    .padding(.horizontal, 10)
+                                    .padding(.horizontal, 9)
                                     .padding(.vertical, 5)
                                     .background(Color.orange.opacity(0.15))
                                     .foregroundColor(.orange)
@@ -367,7 +440,6 @@ struct GuideSingleCardView: View {
                             
                             Spacer()
                             
-                            // Tasto Modifica Testo
                             Button {
                                 showingEditSheet = true
                             } label: {
@@ -383,52 +455,153 @@ struct GuideSingleCardView: View {
                                 .clipShape(Capsule())
                             }
                             .buttonStyle(.plain)
-                            
-                            if step.isCompleted {
-                                Label("Fatto", systemImage: "checkmark.circle.fill")
-                                    .font(.caption.bold())
-                                    .foregroundColor(.green)
-                            }
                         }
                         
-                        // Testo Istruzione
-                        Text(step.instructionText)
-                            .font(.system(size: 20, weight: .medium, design: .rounded))
-                            .lineSpacing(6)
-                            .foregroundColor(.primary)
+                        // Titolo della Scheda
+                        if !step.title.isEmpty {
+                            Text(step.title)
+                                .font(.system(size: 22, weight: .bold, design: .rounded))
+                                .foregroundColor(.primary)
+                        }
                         
-                        // Metriche di riferimento (maglie, centimetri)
-                        HStack(spacing: 12) {
-                            if let sts = step.stitchCountAfter {
-                                Label("\(sts) maglie totali", systemImage: "number")
-                                    .font(.subheadline.bold())
+                        // Badge Maglie Prima -> Dopo e Misura
+                        HStack(spacing: 10) {
+                            if let before = step.stitchCountBefore, let after = step.stitchCountAfter, before != after {
+                                let diff = after - before
+                                let diffStr = diff > 0 ? "+\(diff)" : "\(diff)"
+                                Label("\(before) → \(after) maglie (\(diffStr))", systemImage: "arrow.right.circle.fill")
+                                    .font(.caption.bold())
                                     .foregroundColor(.blue)
                                     .padding(.horizontal, 10)
                                     .padding(.vertical, 6)
-                                    .background(Color.blue.opacity(0.1))
+                                    .background(Color.blue.opacity(0.12))
+                                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                            } else if let sts = step.stitchCountAfter, sts > 0 {
+                                Label("\(sts) maglie sui ferri", systemImage: "number")
+                                    .font(.caption.bold())
+                                    .foregroundColor(.blue)
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 6)
+                                    .background(Color.blue.opacity(0.12))
                                     .clipShape(RoundedRectangle(cornerRadius: 8))
                             }
                             
                             if let measure = step.targetMeasureCm {
-                                Label("Misura: \(String(format: "%.1f", measure)) cm", systemImage: "ruler")
-                                    .font(.subheadline.bold())
+                                Label("Misura: \(String(format: "%.0f", measure)) cm", systemImage: "ruler")
+                                    .font(.caption.bold())
                                     .foregroundColor(.purple)
                                     .padding(.horizontal, 10)
                                     .padding(.vertical, 6)
-                                    .background(Color.purple.opacity(0.1))
+                                    .background(Color.purple.opacity(0.12))
                                     .clipShape(RoundedRectangle(cornerRadius: 8))
                             }
                         }
                         
-                        // Contatore se presente
+                        // CONTATORE INTEGRATO (in primo piano per guidare i passaggi)
                         if step.hasCounter {
-                            Divider()
-                                .padding(.vertical, 4)
-                            
                             CardCounterBoxView(step: step)
                         }
+                        
+                        // Testo Principale dell'Istruzione
+                        Text(step.instructionText)
+                            .font(.system(size: 17, weight: .regular, design: .rounded))
+                            .lineSpacing(4)
+                            .foregroundColor(.primary)
+                        
+                        // SUB-STEPS (Ferri o Giri del Ciclo Ripetuto, con evidenziazione del ferro attivo)
+                        if !step.subSteps.isEmpty {
+                            VStack(alignment: .leading, spacing: 8) {
+                                HStack {
+                                    Image(systemName: step.rowsPerRepeat != nil ? "repeat" : "list.number")
+                                        .foregroundColor(.accentColor)
+                                    Text(step.rowsPerRepeat != nil ? "Passaggi del Ciclo (Evidenziato il ferro attuale):" : "Dettaglio Passaggi:")
+                                        .font(.subheadline.bold())
+                                        .foregroundColor(.secondary)
+                                }
+                                
+                                ForEach(Array(step.subSteps.enumerated()), id: \.offset) { idx, subText in
+                                    let isActive = isSubStepActive(index: idx, for: step)
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        if isActive {
+                                            HStack(spacing: 4) {
+                                                Image(systemName: "hand.point.right.fill")
+                                                Text("DA LAVORARE ORA")
+                                            }
+                                            .font(.caption2.bold())
+                                            .foregroundColor(.white)
+                                            .padding(.horizontal, 8)
+                                            .padding(.vertical, 3)
+                                            .background(Color.accentColor)
+                                            .clipShape(Capsule())
+                                        }
+                                        
+                                        Text(subText)
+                                            .font(.system(size: 15, weight: isActive ? .semibold : .regular, design: .rounded))
+                                            .foregroundColor(.primary)
+                                            .fixedSize(horizontal: false, vertical: true)
+                                    }
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(12)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 12)
+                                            .fill(isActive ? Color.accentColor.opacity(0.14) : Color(.tertiarySystemGroupedBackground))
+                                    )
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 12)
+                                            .stroke(isActive ? Color.accentColor : Color.clear, lineWidth: 2)
+                                    )
+                                }
+                            }
+                        }
+                        
+                        // REPEAT VARIATIONS (es. avanzamento ferri accorciati per ciascuna ripetizione)
+                        if !step.repeatVariations.isEmpty {
+                            VStack(alignment: .leading, spacing: 8) {
+                                HStack {
+                                    Image(systemName: "sparkles")
+                                        .foregroundColor(.indigo)
+                                    Text("Dove girare in ogni Ripetizione:")
+                                        .font(.subheadline.bold())
+                                        .foregroundColor(.secondary)
+                                }
+                                
+                                ForEach(Array(step.repeatVariations.enumerated()), id: \.offset) { idx, varText in
+                                    let isCurrentVar = isVariationActive(index: idx, for: step)
+                                    let isPastVar = (step.rowsPerRepeat != nil) && (step.currentStepCount / step.rowsPerRepeat!) > idx
+                                    
+                                    HStack(alignment: .top, spacing: 8) {
+                                        Image(systemName: isPastVar ? "checkmark.circle.fill" : (isCurrentVar ? "arrow.right.circle.fill" : "circle"))
+                                            .foregroundColor(isPastVar ? .green : (isCurrentVar ? .indigo : .secondary))
+                                            .font(.subheadline)
+                                            .padding(.top, 2)
+                                        
+                                        VStack(alignment: .leading, spacing: 3) {
+                                            if isCurrentVar {
+                                                Text("RIPETIZIONE IN CORSO")
+                                                    .font(.caption2.bold())
+                                                    .foregroundColor(.indigo)
+                                            }
+                                            Text(varText)
+                                                .font(.system(size: 14, weight: isCurrentVar ? .semibold : .regular, design: .rounded))
+                                                .foregroundColor(isPastVar ? .secondary : .primary)
+                                                .strikethrough(isPastVar, color: .secondary)
+                                        }
+                                    }
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(10)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 10)
+                                            .fill(isCurrentVar ? Color.indigo.opacity(0.12) : Color(.tertiarySystemGroupedBackground))
+                                    )
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 10)
+                                            .stroke(isCurrentVar ? Color.indigo : Color.clear, lineWidth: 1.5)
+                                    )
+                                }
+                            }
+                        }
                     }
-                    .padding(22)
+                    .padding(20)
                     .background(Color(.secondarySystemGroupedBackground))
                     .cornerRadius(24)
                     .shadow(color: Color.black.opacity(0.06), radius: 12, x: 0, y: 4)
@@ -437,7 +610,6 @@ struct GuideSingleCardView: View {
                 
                 // Barra di Navigazione Inferiore
                 HStack(spacing: 14) {
-                    // Pulsante Precedente
                     Button {
                         if currentIndex > 0 {
                             withAnimation(.easeInOut(duration: 0.25)) {
@@ -458,7 +630,6 @@ struct GuideSingleCardView: View {
                     }
                     .disabled(currentIndex == 0)
                     
-                    // Pulsante Completa / Prossimo
                     Button {
                         haptic.impactOccurred()
                         step.isCompleted = true
@@ -484,7 +655,7 @@ struct GuideSingleCardView: View {
                     }
                 }
                 .padding(.horizontal, 16)
-                .padding(.bottom, 12)
+                .padding(.bottom, 10)
             }
             .sheet(isPresented: $showingEditSheet) {
                 EditGuideStepSheet(step: step, onDelete: {
@@ -493,16 +664,68 @@ struct GuideSingleCardView: View {
             }
         }
     }
+    
+    @ViewBuilder
+    private func stepTypeBadge(for step: GuideStep) -> some View {
+        if let rows = step.rowsPerRepeat, let reps = step.totalRepeats, rows > 0, reps > 0 {
+            HStack(spacing: 4) {
+                Image(systemName: "repeat")
+                Text("PATTERN RIPETUTO: \(reps) × \(rows) = \(reps * rows)")
+            }
+            .font(.caption2.bold())
+            .padding(.horizontal, 9)
+            .padding(.vertical, 5)
+            .background(Color.indigo.opacity(0.15))
+            .foregroundColor(.indigo)
+            .clipShape(Capsule())
+        } else if step.stepType == "work_to_measure" {
+            HStack(spacing: 4) {
+                Image(systemName: "ruler")
+                Text("A MISURA / GIRI")
+            }
+            .font(.caption2.bold())
+            .padding(.horizontal, 9)
+            .padding(.vertical, 5)
+            .background(Color.purple.opacity(0.15))
+            .foregroundColor(.purple)
+            .clipShape(Capsule())
+        } else if step.stepType == "info" || !step.hasCounter {
+            HStack(spacing: 4) {
+                Image(systemName: "info.circle")
+                Text("ISTRUZIONE / SETUP")
+            }
+            .font(.caption2.bold())
+            .padding(.horizontal, 9)
+            .padding(.vertical, 5)
+            .background(Color.secondary.opacity(0.15))
+            .foregroundColor(.secondary)
+            .clipShape(Capsule())
+        } else {
+            HStack(spacing: 4) {
+                Image(systemName: "plus.forwardslash.minus")
+                Text("AZIONE CON CONTATORE")
+            }
+            .font(.caption2.bold())
+            .padding(.horizontal, 9)
+            .padding(.vertical, 5)
+            .background(Color.green.opacity(0.15))
+            .foregroundColor(.green)
+            .clipShape(Capsule())
+        }
+    }
 }
 
-// MARK: - Box Contatore Integrato
+// MARK: - Box Contatore Integrato Intelligente (con supporto Pattern Ripetuti N x M)
 struct CardCounterBoxView: View {
     @Bindable var step: GuideStep
     private let haptic = UIImpactFeedbackGenerator(style: .medium)
     private let successHaptic = UINotificationFeedbackGenerator()
     
     var effectiveTarget: Int? {
-        step.targetStepCount
+        if let rows = step.rowsPerRepeat, let reps = step.totalRepeats, rows > 0, reps > 0 {
+            return rows * reps
+        }
+        return step.targetStepCount
     }
     
     var isTargetReached: Bool {
@@ -512,15 +735,55 @@ struct CardCounterBoxView: View {
         return false
     }
     
+    var isRepeatPattern: Bool {
+        if let rows = step.rowsPerRepeat, let reps = step.totalRepeats, rows > 1, reps > 1 {
+            return true
+        }
+        return false
+    }
+    
+    // Calcolo stato corrente nel ciclo ripetuto
+    var currentRepeatNumber: Int {
+        guard let rows = step.rowsPerRepeat, let reps = step.totalRepeats, rows > 0 else { return 1 }
+        return min((step.currentStepCount / rows) + 1, reps)
+    }
+    
+    var currentRowInCycle: Int {
+        guard let rows = step.rowsPerRepeat, rows > 0 else { return 1 }
+        if isTargetReached { return rows }
+        return (step.currentStepCount % rows) + 1
+    }
+    
+    var completedRepeats: Int {
+        guard let rows = step.rowsPerRepeat, rows > 0 else { return 0 }
+        return step.currentStepCount / rows
+    }
+    
+    // Calcolo maglie attuali in tempo reale dopo le ripetizioni completate
+    var liveStitchCount: Int? {
+        guard let before = step.stitchCountBefore,
+              let after = step.stitchCountAfter,
+              let reps = step.totalRepeats,
+              reps > 0,
+              before != after else { return nil }
+        let deltaPerRepeat = (after - before) / reps
+        return before + (min(completedRepeats, reps) * deltaPerRepeat)
+    }
+    
     var body: some View {
-        VStack(spacing: 14) {
+        VStack(spacing: 12) {
+            // Intestazione Contatore
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(step.counterLabel ?? "Contatore")
                         .font(.subheadline.bold())
-                        .foregroundColor(.secondary)
+                        .foregroundColor(.primary)
                     
-                    if let target = effectiveTarget {
+                    if let rows = step.rowsPerRepeat, let reps = step.totalRepeats, rows > 1, reps > 1 {
+                        Text("\(reps) ripetizioni × \(rows) ferri/giri = \(reps * rows) totali")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    } else if let target = effectiveTarget {
                         Text("Obiettivo: \(target)")
                             .font(.caption)
                             .foregroundColor(.secondary)
@@ -533,21 +796,73 @@ struct CardCounterBoxView: View {
                     Button("Azzera") {
                         step.currentStepCount = 0
                     }
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+                    .font(.caption.bold())
+                    .foregroundColor(.red)
                 }
             }
             
-            // Barra di avanzamento
+            // BANNER DINAMICO PER I PATTERN RIPETUTI (es. Ripetizione 2 di 5 • Ferro 3 di 4)
+            if let rows = step.rowsPerRepeat, let reps = step.totalRepeats, rows > 1, reps > 1 {
+                if isTargetReached {
+                    HStack {
+                        Image(systemName: "checkmark.seal.fill")
+                        Text("Tutte le \(reps) ripetizioni (\(reps * rows) ferri/giri) completate!")
+                            .font(.subheadline.bold())
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+                    .padding(.horizontal, 12)
+                    .background(Color.green.opacity(0.18))
+                    .foregroundColor(.green)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                } else {
+                    VStack(spacing: 6) {
+                        HStack {
+                            Label("Ripetizione \(currentRepeatNumber) di \(reps)", systemImage: "repeat.circle.fill")
+                                .font(.subheadline.bold())
+                                .foregroundColor(.indigo)
+                            
+                            Spacer()
+                            
+                            Text("Ferro/Giro \(currentRowInCycle) di \(rows)")
+                                .font(.subheadline.bold())
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 4)
+                                .background(Color.indigo)
+                                .foregroundColor(.white)
+                                .clipShape(Capsule())
+                        }
+                        
+                        HStack {
+                            Text("Cicli finiti: \(completedRepeats)/\(reps)")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                            
+                            Spacer()
+                            
+                            if let liveSts = liveStitchCount {
+                                Text("Maglie sui ferri ora: \(liveSts) m")
+                                    .font(.caption2.bold())
+                                    .foregroundColor(.blue)
+                            }
+                        }
+                    }
+                    .padding(10)
+                    .background(Color.indigo.opacity(0.1))
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                }
+            }
+            
+            // Barra di avanzamento totale
             if let target = effectiveTarget, target > 0 {
                 let progress = min(Double(step.currentStepCount) / Double(target), 1.0)
                 ProgressView(value: progress)
                     .tint(isTargetReached ? .green : .accentColor)
             }
             
-            // Display Contatore e Tasti - e +
-            HStack(spacing: 24) {
-                // Tasto Meno
+            // Display Contatore Principale e Tasti -1 e +1
+            HStack(spacing: 20) {
+                // Tasto -1
                 Button {
                     TimerManager.shared.registerInteraction()
                     haptic.impactOccurred()
@@ -566,23 +881,31 @@ struct CardCounterBoxView: View {
                 
                 Spacer()
                 
-                // Numero
-                HStack(alignment: .firstTextBaseline, spacing: 4) {
-                    Text("\(step.currentStepCount)")
-                        .font(.system(size: 46, weight: .bold, design: .rounded))
-                        .foregroundColor(isTargetReached ? .green : .primary)
+                // Numero Totale (es. 0 / 20)
+                VStack(spacing: 2) {
+                    HStack(alignment: .firstTextBaseline, spacing: 4) {
+                        Text("\(step.currentStepCount)")
+                            .font(.system(size: 44, weight: .bold, design: .rounded))
+                            .foregroundColor(isTargetReached ? .green : .primary)
+                        
+                        if let target = effectiveTarget {
+                            Text("/ \(target)")
+                                .font(.title3.bold())
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    .contentTransition(.numericText())
                     
-                    if let target = effectiveTarget {
-                        Text("/ \(target)")
-                            .font(.title2.bold())
+                    if isRepeatPattern {
+                        Text("ferri/giri completati")
+                            .font(.caption2)
                             .foregroundColor(.secondary)
                     }
                 }
-                .contentTransition(.numericText())
                 
                 Spacer()
                 
-                // Tasto Più Gigante
+                // Tasto +1 Gigante
                 Button {
                     TimerManager.shared.registerInteraction()
                     haptic.impactOccurred()
@@ -600,6 +923,83 @@ struct CardCounterBoxView: View {
                         .shadow(color: (isTargetReached ? Color.green : Color.accentColor).opacity(0.35), radius: 6, x: 0, y: 3)
                 }
             }
+            
+            // Pulsanti Rapidi Extra:
+            // - Per Pattern Ripetuti: "+1 Ripetizione (+N ferri)"
+            // - Per Avvio/Intreccio alto (>= 50 maglie): "-10" e "+10 maglie"
+            if let rows = step.rowsPerRepeat, let reps = step.totalRepeats, rows > 1, reps > 1 {
+                HStack(spacing: 12) {
+                    Button {
+                        TimerManager.shared.registerInteraction()
+                        haptic.impactOccurred()
+                        step.currentStepCount = max(0, step.currentStepCount - rows)
+                    } label: {
+                        Text("-1 Ripetizione (-\(rows))")
+                            .font(.caption.bold())
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 8)
+                            .background(Color(.systemGray5))
+                            .foregroundColor(.primary)
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                    }
+                    .disabled(step.currentStepCount < rows)
+                    
+                    Button {
+                        TimerManager.shared.registerInteraction()
+                        haptic.impactOccurred()
+                        if let target = effectiveTarget {
+                            step.currentStepCount = min(target, step.currentStepCount + rows)
+                        } else {
+                            step.currentStepCount += rows
+                        }
+                        if isTargetReached {
+                            successHaptic.notificationOccurred(.success)
+                        }
+                    } label: {
+                        Text("+1 Ripetizione (+\(rows))")
+                            .font(.caption.bold())
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 8)
+                            .background(Color.indigo.opacity(0.15))
+                            .foregroundColor(.indigo)
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                    }
+                }
+            } else if let target = effectiveTarget, target >= 50 {
+                HStack(spacing: 12) {
+                    Button {
+                        TimerManager.shared.registerInteraction()
+                        haptic.impactOccurred()
+                        step.currentStepCount = max(0, step.currentStepCount - 10)
+                    } label: {
+                        Text("-10 maglie")
+                            .font(.caption.bold())
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 8)
+                            .background(Color(.systemGray5))
+                            .foregroundColor(.primary)
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                    }
+                    .disabled(step.currentStepCount == 0)
+                    
+                    Button {
+                        TimerManager.shared.registerInteraction()
+                        haptic.impactOccurred()
+                        step.currentStepCount = min(target, step.currentStepCount + 10)
+                        if isTargetReached {
+                            successHaptic.notificationOccurred(.success)
+                        }
+                    } label: {
+                        Text("+10 maglie")
+                            .font(.caption.bold())
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 8)
+                            .background(Color.accentColor.opacity(0.15))
+                            .foregroundColor(.accentColor)
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                    }
+                }
+            }
         }
         .padding(16)
         .background(Color(.tertiarySystemGroupedBackground))
@@ -610,17 +1010,21 @@ struct CardCounterBoxView: View {
 // MARK: - Foglio per Aggiungere Manualmente una Sezione o Passaggio
 struct AddGuideStepSheet: View {
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.modelContext) private var modelContext
     var project: KnittingProject
     
     @State private var sectionTitle: String = ""
+    @State private var title: String = ""
+    @State private var stepType: String = "single_action"
     @State private var instructionText: String = ""
-    @State private var hasCounter: Bool = false
-    @State private var counterLabel: String = "Maglie"
+    @State private var hasCounter: Bool = true
+    @State private var counterLabel: String = "Ferri / Maglie"
+    @State private var rowsPerRepeatString: String = "4"
+    @State private var totalRepeatsString: String = "5"
     @State private var targetCountString: String = ""
+    @State private var subStepsText: String = ""
     @State private var targetMeasureString: String = ""
     @State private var sourcePageString: String = ""
-    @State private var stitchCountString: String = ""
+    @State private var stitchCountAfterString: String = ""
     
     var existingSections: [String] {
         var titles: [String] = []
@@ -635,8 +1039,8 @@ struct AddGuideStepSheet: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Sezione") {
-                    TextField("Nome Sezione (es. Collo, Sprone, Bordo...)", text: $sectionTitle)
+                Section("Sezione e Titolo") {
+                    TextField("Nome Sezione (es. Sprone, Corpo, Maniche)", text: $sectionTitle)
                     
                     if !existingSections.isEmpty {
                         ScrollView(.horizontal, showsIndicators: false) {
@@ -659,35 +1063,84 @@ struct AddGuideStepSheet: View {
                             .padding(.vertical, 4)
                         }
                     }
+                    
+                    TextField("Titolo Scheda (es. Ferri Accorciati 5 × 4)", text: $title)
+                }
+                
+                Section("Tipo di Passaggio") {
+                    Picker("Tipo", selection: $stepType) {
+                        Text("Azione Singola").tag("single_action")
+                        Text("Pattern Ripetuto (N × M ferri)").tag("repeat_pattern")
+                        Text("Lavora a Misura (cm)").tag("work_to_measure")
+                        Text("Solo Informazione").tag("info")
+                    }
+                    .onChange(of: stepType) { _, newValue in
+                        if newValue == "info" {
+                            hasCounter = false
+                        } else {
+                            hasCounter = true
+                        }
+                    }
                 }
                 
                 Section("Istruzione") {
                     TextEditor(text: $instructionText)
-                        .frame(minHeight: 100)
+                        .frame(minHeight: 90)
                 }
                 
-                Section("Contatore Integrato") {
-                    Toggle("Abilita contatore su questa card", isOn: $hasCounter)
-                    
-                    if hasCounter {
-                        TextField("Nome contatore (es. Maglie Avviate, Giri, Calature)", text: $counterLabel)
-                        TextField("Obiettivo numerico (es. 114)", text: $targetCountString)
-                            .keyboardType(.numberPad)
+                if stepType == "repeat_pattern" {
+                    Section("Calcolo Pattern Ripetuto") {
+                        HStack {
+                            Text("Ferri per ogni ripetizione:")
+                            Spacer()
+                            TextField("Es. 4", text: $rowsPerRepeatString)
+                                .keyboardType(.numberPad)
+                                .multilineTextAlignment(.trailing)
+                                .frame(width: 80)
+                        }
+                        HStack {
+                            Text("Numero di ripetizioni:")
+                            Spacer()
+                            TextField("Es. 5", text: $totalRepeatsString)
+                                .keyboardType(.numberPad)
+                                .multilineTextAlignment(.trailing)
+                                .frame(width: 80)
+                        }
+                        if let r = Int(rowsPerRepeatString), let t = Int(totalRepeatsString) {
+                            Text("Totale Contatore: \(r * t) ferri/giri")
+                                .font(.subheadline.bold())
+                                .foregroundColor(.indigo)
+                        }
+                    }
+                } else {
+                    Section("Contatore Integrato") {
+                        Toggle("Abilita contatore su questa card", isOn: $hasCounter)
+                        
+                        if hasCounter {
+                            TextField("Nome contatore (es. Maglie Avviate, Giri)", text: $counterLabel)
+                            TextField("Obiettivo numerico (es. 114)", text: $targetCountString)
+                                .keyboardType(.numberPad)
+                        }
                     }
                 }
                 
+                Section("Sotto-passaggi (1 per riga, opzionale)") {
+                    TextEditor(text: $subStepsText)
+                        .frame(minHeight: 80)
+                }
+                
                 Section("Dettagli Aggiuntivi (Opzionali)") {
-                    TextField("Maglie totali al termine (es. 114)", text: $stitchCountString)
+                    TextField("Maglie totali al termine (es. 154)", text: $stitchCountAfterString)
                         .keyboardType(.numberPad)
                     
                     TextField("Misura in cm (es. 4.0)", text: $targetMeasureString)
                         .keyboardType(.decimalPad)
                     
-                    TextField("Numero pagina PDF (es. 2)", text: $sourcePageString)
+                    TextField("Numero pagina PDF (es. 3)", text: $sourcePageString)
                         .keyboardType(.numberPad)
                 }
             }
-            .navigationTitle("Aggiungi Passaggio")
+            .navigationTitle("Aggiungi Scheda")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -706,18 +1159,36 @@ struct AddGuideStepSheet: View {
     }
     
     private func saveNewStep() {
+        let rowsPerRep = stepType == "repeat_pattern" ? Int(rowsPerRepeatString) : nil
+        let totalReps = stepType == "repeat_pattern" ? Int(totalRepeatsString) : nil
+        let computedTarget: Int? = {
+            if let r = rowsPerRep, let t = totalReps {
+                return r * t
+            }
+            return hasCounter ? Int(targetCountString) : nil
+        }()
+        
+        let parsedSubSteps = subStepsText
+            .components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+        
         let step = GuideStep(
             sectionTitle: sectionTitle.trimmingCharacters(in: .whitespaces),
+            title: title.trimmingCharacters(in: .whitespaces),
+            stepType: stepType,
             instructionText: instructionText.trimmingCharacters(in: .whitespaces),
-            stitchCountAfter: Int(stitchCountString),
+            subSteps: parsedSubSteps,
+            rowsPerRepeat: rowsPerRep,
+            totalRepeats: totalReps,
+            stitchCountAfter: Int(stitchCountAfterString),
             targetMeasureCm: Double(targetMeasureString.replacingOccurrences(of: ",", with: ".")),
             sourcePage: Int(sourcePageString),
-            sourceQuote: nil,
             orderIndex: project.guideSteps.count,
-            hasCounter: hasCounter,
+            hasCounter: stepType == "repeat_pattern" ? true : hasCounter,
             counterLabel: hasCounter ? counterLabel : nil,
             currentStepCount: 0,
-            targetStepCount: hasCounter ? Int(targetCountString) : nil
+            targetStepCount: computedTarget
         )
         step.project = project
         project.guideSteps.append(step)
@@ -731,45 +1202,118 @@ struct EditGuideStepSheet: View {
     var onDelete: () -> Void
     
     @State private var sectionTitle: String = ""
+    @State private var title: String = ""
+    @State private var stepType: String = "single_action"
     @State private var editedText: String = ""
     @State private var hasCounter: Bool = false
     @State private var counterLabel: String = ""
+    @State private var rowsPerRepeatString: String = ""
+    @State private var totalRepeatsString: String = ""
     @State private var targetCountString: String = ""
+    @State private var subStepsText: String = ""
+    @State private var variationsText: String = ""
     @State private var targetMeasureString: String = ""
+    @State private var stitchBeforeString: String = ""
     @State private var stitchCountString: String = ""
     @State private var sourcePageString: String = ""
     
     var body: some View {
         NavigationStack {
             Form {
-                Section("Sezione di Appartenenza") {
+                Section("Sezione e Titolo") {
                     TextField("Nome Sezione", text: $sectionTitle)
+                    TextField("Titolo Scheda", text: $title)
+                }
+                
+                Section("Tipo di Scheda") {
+                    Picker("Tipo", selection: $stepType) {
+                        Text("Azione Singola").tag("single_action")
+                        Text("Pattern Ripetuto (N × M ferri)").tag("repeat_pattern")
+                        Text("Lavora a Misura (cm)").tag("work_to_measure")
+                        Text("Solo Informazione").tag("info")
+                    }
                 }
                 
                 Section("Testo Istruzione") {
                     TextEditor(text: $editedText)
-                        .frame(minHeight: 110)
+                        .frame(minHeight: 100)
                 }
                 
-                Section("Contatore per questa Card") {
-                    Toggle("Mostra contatore", isOn: $hasCounter)
+                Section("Contatore e Ripetizioni") {
+                    Toggle("Mostra contatore sulla scheda", isOn: $hasCounter)
                     
                     if hasCounter {
-                        TextField("Nome contatore (es. Maglie, Ripetizioni)", text: $counterLabel)
-                        TextField("Obiettivo numerico (es. 114)", text: $targetCountString)
-                            .keyboardType(.numberPad)
+                        TextField("Etichetta contatore", text: $counterLabel)
+                        
+                        if stepType == "repeat_pattern" {
+                            HStack {
+                                Text("Ferri per ripetizione:")
+                                Spacer()
+                                TextField("Es. 4", text: $rowsPerRepeatString)
+                                    .keyboardType(.numberPad)
+                                    .multilineTextAlignment(.trailing)
+                                    .frame(width: 80)
+                            }
+                            HStack {
+                                Text("Ripetizioni totali:")
+                                Spacer()
+                                TextField("Es. 5", text: $totalRepeatsString)
+                                    .keyboardType(.numberPad)
+                                    .multilineTextAlignment(.trailing)
+                                    .frame(width: 80)
+                            }
+                        }
+                        
+                        HStack {
+                            Text("Obiettivo totale contatore:")
+                            Spacer()
+                            TextField("Es. 20", text: $targetCountString)
+                                .keyboardType(.numberPad)
+                                .multilineTextAlignment(.trailing)
+                                .frame(width: 90)
+                        }
                     }
                 }
                 
-                Section("Misure e Dati") {
-                    TextField("Maglie totali (es. 114)", text: $stitchCountString)
-                        .keyboardType(.numberPad)
-                    
-                    TextField("Misura in cm (es. 4.0)", text: $targetMeasureString)
-                        .keyboardType(.decimalPad)
-                        
-                    TextField("Pagina del PDF", text: $sourcePageString)
-                        .keyboardType(.numberPad)
+                Section("Ferri / Sotto-passaggi (1 per riga)") {
+                    TextEditor(text: $subStepsText)
+                        .frame(minHeight: 90)
+                }
+                
+                Section("Variazioni per Ripetizione (1 per riga)") {
+                    TextEditor(text: $variationsText)
+                        .frame(minHeight: 80)
+                }
+                
+                Section("Maglie e Misure") {
+                    HStack {
+                        Text("Maglie iniziali:")
+                        Spacer()
+                        TextField("Es. 114", text: $stitchBeforeString)
+                            .keyboardType(.numberPad)
+                            .multilineTextAlignment(.trailing)
+                    }
+                    HStack {
+                        Text("Maglie finali:")
+                        Spacer()
+                        TextField("Es. 154", text: $stitchCountString)
+                            .keyboardType(.numberPad)
+                            .multilineTextAlignment(.trailing)
+                    }
+                    HStack {
+                        Text("Misura obiettivo (cm):")
+                        Spacer()
+                        TextField("Es. 4.0", text: $targetMeasureString)
+                            .keyboardType(.decimalPad)
+                            .multilineTextAlignment(.trailing)
+                    }
+                    HStack {
+                        Text("Pagina PDF:")
+                        Spacer()
+                        TextField("Es. 3", text: $sourcePageString)
+                            .keyboardType(.numberPad)
+                            .multilineTextAlignment(.trailing)
+                    }
                 }
                 
                 Section {
@@ -779,13 +1323,13 @@ struct EditGuideStepSheet: View {
                     } label: {
                         HStack {
                             Spacer()
-                            Label("Elimina questo Passaggio", systemImage: "trash")
+                            Label("Elimina questa Scheda", systemImage: "trash")
                             Spacer()
                         }
                     }
                 }
             }
-            .navigationTitle("Modifica Passaggio")
+            .navigationTitle("Modifica Scheda")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -801,31 +1345,47 @@ struct EditGuideStepSheet: View {
             }
             .onAppear {
                 sectionTitle = step.sectionTitle
+                title = step.title
+                stepType = step.stepType
                 editedText = step.instructionText
                 hasCounter = step.hasCounter
                 counterLabel = step.counterLabel ?? ""
-                if let target = step.targetStepCount {
-                    targetCountString = "\(target)"
-                }
-                if let sts = step.stitchCountAfter {
-                    stitchCountString = "\(sts)"
-                }
-                if let measure = step.targetMeasureCm {
-                    targetMeasureString = "\(measure)"
-                }
-                if let page = step.sourcePage {
-                    sourcePageString = "\(page)"
-                }
+                if let r = step.rowsPerRepeat { rowsPerRepeatString = "\(r)" }
+                if let t = step.totalRepeats { totalRepeatsString = "\(t)" }
+                if let target = step.targetStepCount { targetCountString = "\(target)" }
+                subStepsText = step.subSteps.joined(separator: "\n")
+                variationsText = step.repeatVariations.joined(separator: "\n")
+                if let before = step.stitchCountBefore { stitchBeforeString = "\(before)" }
+                if let sts = step.stitchCountAfter { stitchCountString = "\(sts)" }
+                if let measure = step.targetMeasureCm { targetMeasureString = "\(measure)" }
+                if let page = step.sourcePage { sourcePageString = "\(page)" }
             }
         }
     }
     
     private func saveChanges() {
         step.sectionTitle = sectionTitle.trimmingCharacters(in: .whitespaces)
+        step.title = title.trimmingCharacters(in: .whitespaces)
+        step.stepType = stepType
         step.instructionText = editedText
         step.hasCounter = hasCounter
         step.counterLabel = counterLabel.isEmpty ? nil : counterLabel
-        step.targetStepCount = Int(targetCountString)
+        step.rowsPerRepeat = Int(rowsPerRepeatString)
+        step.totalRepeats = Int(totalRepeatsString)
+        if let r = step.rowsPerRepeat, let t = step.totalRepeats, r > 0, t > 0 {
+            step.targetStepCount = r * t
+        } else {
+            step.targetStepCount = Int(targetCountString)
+        }
+        step.subSteps = subStepsText
+            .components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+        step.repeatVariations = variationsText
+            .components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+        step.stitchCountBefore = Int(stitchBeforeString)
         step.stitchCountAfter = Int(stitchCountString)
         step.targetMeasureCm = Double(targetMeasureString.replacingOccurrences(of: ",", with: "."))
         step.sourcePage = Int(sourcePageString)
@@ -836,11 +1396,12 @@ struct EditGuideStepSheet: View {
 struct GuideStepRow: View {
     @Bindable var step: GuideStep
     var onNavigateToPage: (Int) -> Void
+    var onJumpToCard: () -> Void
     var onDelete: () -> Void
     @State private var showingEditSheet = false
     
     var body: some View {
-        HStack(alignment: .top, spacing: 14) {
+        HStack(alignment: .top, spacing: 12) {
             Button {
                 step.isCompleted.toggle()
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -852,71 +1413,64 @@ struct GuideStepRow: View {
             .buttonStyle(.plain)
             .padding(.top, 2)
             
-            VStack(alignment: .leading, spacing: 6) {
-                Text(step.instructionText)
-                    .font(.body)
-                    .foregroundColor(step.isCompleted ? .secondary : .primary)
-                    .strikethrough(step.isCompleted, color: .secondary)
-                
-                HStack(spacing: 8) {
-                    if step.hasCounter {
-                        HStack(spacing: 4) {
-                            Image(systemName: "number.circle.fill")
-                            Text(step.counterLabel ?? "Contatore")
-                        }
-                        .font(.caption2.bold())
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 3)
-                        .background(Color.green.opacity(0.12))
-                        .foregroundColor(.green)
-                        .clipShape(Capsule())
+            Button {
+                onJumpToCard()
+            } label: {
+                VStack(alignment: .leading, spacing: 6) {
+                    if !step.title.isEmpty {
+                        Text(step.title)
+                            .font(.subheadline.bold())
+                            .foregroundColor(step.isCompleted ? .secondary : .primary)
+                            .strikethrough(step.isCompleted, color: .secondary)
                     }
                     
-                    if let sts = step.stitchCountAfter {
-                        HStack(spacing: 4) {
-                            Image(systemName: "number")
+                    Text(step.instructionText)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .lineLimit(2)
+                    
+                    HStack(spacing: 6) {
+                        if let rows = step.rowsPerRepeat, let reps = step.totalRepeats {
+                            Text("\(reps)×\(rows) = \(reps * rows) ferri")
+                                .font(.caption2.bold())
+                                .padding(.horizontal, 7)
+                                .padding(.vertical, 3)
+                                .background(Color.indigo.opacity(0.14))
+                                .foregroundColor(.indigo)
+                                .clipShape(Capsule())
+                        } else if step.hasCounter, let target = step.targetStepCount {
+                            Text("\(step.currentStepCount)/\(target)")
+                                .font(.caption2.bold())
+                                .padding(.horizontal, 7)
+                                .padding(.vertical, 3)
+                                .background(Color.green.opacity(0.14))
+                                .foregroundColor(.green)
+                                .clipShape(Capsule())
+                        }
+                        
+                        if let sts = step.stitchCountAfter, sts > 0 {
                             Text("\(sts) m")
+                                .font(.caption2.bold())
+                                .padding(.horizontal, 7)
+                                .padding(.vertical, 3)
+                                .background(Color.blue.opacity(0.12))
+                                .foregroundColor(.blue)
+                                .clipShape(Capsule())
                         }
-                        .font(.caption2.bold())
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 3)
-                        .background(Color.blue.opacity(0.12))
-                        .foregroundColor(.blue)
-                        .clipShape(Capsule())
-                    }
-                    
-                    if let measure = step.targetMeasureCm {
-                        HStack(spacing: 4) {
-                            Image(systemName: "ruler")
-                            Text("\(String(format: "%.1f", measure)) cm")
+                        
+                        if let measure = step.targetMeasureCm {
+                            Text("\(String(format: "%.0f", measure)) cm")
+                                .font(.caption2.bold())
+                                .padding(.horizontal, 7)
+                                .padding(.vertical, 3)
+                                .background(Color.purple.opacity(0.12))
+                                .foregroundColor(.purple)
+                                .clipShape(Capsule())
                         }
-                        .font(.caption2.bold())
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 3)
-                        .background(Color.purple.opacity(0.12))
-                        .foregroundColor(.purple)
-                        .clipShape(Capsule())
-                    }
-                    
-                    if let page = step.sourcePage {
-                        Button {
-                            onNavigateToPage(page)
-                        } label: {
-                            HStack(spacing: 4) {
-                                Image(systemName: "doc.text")
-                                Text("Pag. \(page)")
-                            }
-                            .font(.caption2.bold())
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 3)
-                            .background(Color.orange.opacity(0.15))
-                            .foregroundColor(.orange)
-                            .clipShape(Capsule())
-                        }
-                        .buttonStyle(.plain)
                     }
                 }
             }
+            .buttonStyle(.plain)
             
             Spacer()
             
@@ -926,6 +1480,7 @@ struct GuideStepRow: View {
                 Image(systemName: "pencil")
                     .font(.caption)
                     .foregroundColor(.secondary)
+                    .padding(6)
             }
             .buttonStyle(.plain)
         }
@@ -950,18 +1505,17 @@ struct GenerateGuideSheet: View {
         NavigationStack {
             Form {
                 Section("Taglia Desiderata") {
-                    TextField("Es. S, M, L, XL, 38, 42...", text: $targetSize)
-                    Text("L'AI filtrerà il pattern isolando solo le istruzioni e il conteggio maglie per questa taglia.")
+                    TextField("Es. XS, S, M, L, XL...", text: $targetSize)
+                    Text("Gemini (con ragionamento profondo) analizzerà il pattern calcolando ferri ripetuti, maglie e contatori per la taglia scelta.")
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
                 
                 if isProcessing {
                     Section {
-                        HStack {
+                        HStack(spacing: 12) {
                             ProgressView()
-                                .padding(.trailing, 8)
-                            Text("Gemini sta analizzando il pattern e creando la guida in italiano...")
+                            Text("Gemini sta analizzando i cicli di ripetizione e calcolando i ferri...")
                                 .font(.subheadline)
                         }
                         .padding(.vertical, 8)
@@ -1022,7 +1576,14 @@ struct GenerateGuideSheet: View {
                         for stepData in section.steps {
                             let step = GuideStep(
                                 sectionTitle: section.name,
+                                title: stepData.title ?? "",
+                                stepType: stepData.stepType ?? "single_action",
                                 instructionText: stepData.instruction,
+                                subSteps: stepData.subSteps ?? [],
+                                repeatVariations: stepData.repeatVariations ?? [],
+                                rowsPerRepeat: stepData.rowsPerRepeat,
+                                totalRepeats: stepData.totalRepeats,
+                                stitchCountBefore: stepData.stitchCountBefore,
                                 stitchCountAfter: stepData.stitchCountAfter,
                                 targetMeasureCm: stepData.targetMeasureCm,
                                 sourcePage: stepData.sourcePage,
