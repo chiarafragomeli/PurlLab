@@ -10,7 +10,7 @@ struct PurlLabApp: App {
             GuideStep.self,
             TimerSession.self
         ])
-        let modelConfiguration = ModelConfiguration("PurlLabV3", schema: schema, isStoredInMemoryOnly: false)
+        let modelConfiguration = ModelConfiguration("PurlLabV4", schema: schema, isStoredInMemoryOnly: false)
 
         do {
             return try ModelContainer(for: schema, configurations: [modelConfiguration])

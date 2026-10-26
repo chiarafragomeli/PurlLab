@@ -11,7 +11,7 @@ struct ProjectListView: View {
     @State private var showingManualNewProject = false
     @State private var newProjectTitle = ""
     @State private var newProjectDesigner = ""
-    @AppStorage("didAutoLoadSampleV3") private var didAutoLoadSampleV3 = false
+    @AppStorage("didAutoLoadSampleV4") private var didAutoLoadSampleV4 = false
     
     var body: some View {
         NavigationStack {
@@ -57,8 +57,19 @@ struct ProjectListView: View {
             }
             .navigationTitle("I Miei Progetti")
             .onAppear {
-                if projects.isEmpty && !didAutoLoadSampleV3 {
-                    didAutoLoadSampleV3 = true
+                // Rimuovi eventuali vecchi contatori del raglan dalla scheda contatori
+                for project in projects {
+                    let raglanCounters = project.counters.filter { $0.title.localizedCaseInsensitiveContains("raglan") }
+                    for rc in raglanCounters {
+                        if let idx = project.counters.firstIndex(where: { $0.id == rc.id }) {
+                            project.counters.remove(at: idx)
+                            modelContext.delete(rc)
+                        }
+                    }
+                }
+                
+                if projects.isEmpty && !didAutoLoadSampleV4 {
+                    didAutoLoadSampleV4 = true
                     loadSamplePattern()
                 }
             }
@@ -153,10 +164,6 @@ struct ProjectListView: View {
         let c1 = RowCounter(title: "Ferri Principali")
         c1.project = project
         project.counters.append(c1)
-        
-        let c2 = RowCounter(title: "Aumenti Raglan (58 giri)", targetCount: 58)
-        c2.project = project
-        project.counters.append(c2)
         
         if let guideUrl = Bundle.main.url(forResource: "NoFrillsGuide_M", withExtension: "json"),
            let guideData = try? Data(contentsOf: guideUrl),
