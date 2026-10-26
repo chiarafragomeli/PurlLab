@@ -66,6 +66,11 @@ struct ProjectDetailView: View {
     @State private var selectedTab: DetailTab = .guide
     @State private var targetPdfPage: Int = 1
     
+    @State private var showingEditProject = false
+    @State private var editedTitle = ""
+    @State private var editedDesigner = ""
+    @State private var editedSize = ""
+    
     enum DetailTab: String, CaseIterable {
         case guide = "Guida"
         case counters = "Contatori"
@@ -117,6 +122,52 @@ struct ProjectDetailView: View {
         }
         .navigationTitle(project.title)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    editedTitle = project.title
+                    editedDesigner = project.designer
+                    editedSize = project.selectedSize
+                    showingEditProject = true
+                } label: {
+                    Image(systemName: "pencil.circle")
+                        .font(.body)
+                }
+            }
+        }
+        .sheet(isPresented: $showingEditProject) {
+            NavigationStack {
+                Form {
+                    Section("Nome e Dettagli") {
+                        TextField("Nome del Progetto", text: $editedTitle)
+                        TextField("Designer (opzionale)", text: $editedDesigner)
+                        TextField("Taglia (es. M, S, L...)", text: $editedSize)
+                    }
+                }
+                .navigationTitle("Modifica Progetto")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Annulla") { showingEditProject = false }
+                    }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Salva") {
+                            let clean = editedTitle.trimmingCharacters(in: .whitespaces)
+                            if !clean.isEmpty {
+                                project.title = clean
+                            }
+                            project.designer = editedDesigner.trimmingCharacters(in: .whitespaces)
+                            project.selectedSize = editedSize.trimmingCharacters(in: .whitespaces)
+                            project.updatedAt = Date()
+                            showingEditProject = false
+                        }
+                        .bold()
+                        .disabled(editedTitle.trimmingCharacters(in: .whitespaces).isEmpty)
+                    }
+                }
+            }
+            .presentationDetents([.medium])
+        }
         .onDisappear {
             // Save active session if leaving project
             if TimerManager.shared.isRunning && TimerManager.shared.activeProjectId == project.id {

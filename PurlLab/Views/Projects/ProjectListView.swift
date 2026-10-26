@@ -11,6 +11,9 @@ struct ProjectListView: View {
     @State private var showingManualNewProject = false
     @State private var newProjectTitle = ""
     @State private var newProjectDesigner = ""
+    @State private var projectToRename: KnittingProject?
+    @State private var renameTitle = ""
+    @State private var showingRenameAlert = false
     @AppStorage("didAutoLoadSampleV4") private var didAutoLoadSampleV4 = false
     
     var body: some View {
@@ -48,6 +51,32 @@ struct ProjectListView: View {
                         ForEach(projects) { project in
                             NavigationLink(destination: ProjectDetailView(project: project)) {
                                 ProjectRowView(project: project)
+                            }
+                            .swipeActions(edge: .leading) {
+                                Button {
+                                    projectToRename = project
+                                    renameTitle = project.title
+                                    showingRenameAlert = true
+                                } label: {
+                                    Label("Rinomina", systemImage: "pencil")
+                                }
+                                .tint(.indigo)
+                            }
+                            .contextMenu {
+                                Button {
+                                    projectToRename = project
+                                    renameTitle = project.title
+                                    showingRenameAlert = true
+                                } label: {
+                                    Label("Rinomina Progetto", systemImage: "pencil")
+                                }
+                                Button(role: .destructive) {
+                                    if let idx = projects.firstIndex(where: { $0.id == project.id }) {
+                                        deleteProjects(at: IndexSet(integer: idx))
+                                    }
+                                } label: {
+                                    Label("Elimina Progetto", systemImage: "trash")
+                                }
                             }
                         }
                         .onDelete(perform: deleteProjects)
@@ -143,6 +172,22 @@ struct ProjectListView: View {
                     modelContext.insert(project)
                     newProjectTitle = ""
                     newProjectDesigner = ""
+                }
+            }
+            .alert("Rinomina Progetto", isPresented: $showingRenameAlert) {
+                TextField("Nome del Progetto", text: $renameTitle)
+                Button("Annulla", role: .cancel) {
+                    projectToRename = nil
+                }
+                Button("Salva") {
+                    if let p = projectToRename {
+                        let clean = renameTitle.trimmingCharacters(in: .whitespaces)
+                        if !clean.isEmpty {
+                            p.title = clean
+                            p.updatedAt = Date()
+                        }
+                    }
+                    projectToRename = nil
                 }
             }
         }
