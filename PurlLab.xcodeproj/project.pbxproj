@@ -1,0 +1,443 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		0F1A9825AB02BAF58E453EF1 /* GuideView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F03DA82C19075EAC1BBC944E /* GuideView.swift */; };
+		0F26500457C14AD709FDD4E1 /* PurlLabApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32C7C9AE21E0B8E8EF01F13F /* PurlLabApp.swift */; };
+		26DB21CAF7D4CD5C3A0D99DB /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 23B00C30EBCB7A83FBE2F53D /* Assets.xcassets */; };
+		577D0B02EFD6F343554EFFBA /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C61EFFA108303FDE921107A /* SettingsView.swift */; };
+		59154BC65B526C9A916CB02A /* CountersView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 199DCA4D0037298D93770327 /* CountersView.swift */; };
+		5FF30202366952EDA9B12974 /* ProjectListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5EFA754564E139C334F4AEBE /* ProjectListView.swift */; };
+		65CDF45B4527EE05C2F4AAAA /* GuideStep.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2ABEE0ADD4772F0B0270D7A /* GuideStep.swift */; };
+		69AE66B9A9B1883F71A1EF86 /* ProjectDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D8CFA694A9E37477ED08F2E5 /* ProjectDetailView.swift */; };
+		8FD2FC66E246AF56C0562049 /* TimerSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3633C4A55B8054025112A460 /* TimerSession.swift */; };
+		993987771A9D607E436E48AD /* RowCounter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7B33461524B84F6AADF317E /* RowCounter.swift */; };
+		A4332D261F07396F826560D4 /* PatternPDFView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C8D8AF3D4FE104EBDC2A2A3 /* PatternPDFView.swift */; };
+		A4714E5675F3B799E1E9BA89 /* GeminiService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4974FF7AC44D550D6C785133 /* GeminiService.swift */; };
+		CEDA46DDBA1667561030B26D /* KeychainHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = B09183BCE227B9913B32C00A /* KeychainHelper.swift */; };
+		D5B81BEB987F3C6684FA2F65 /* KnittingProject.swift in Sources */ = {isa = PBXBuildFile; fileRef = 899C3D33AF11D62B1DDF1281 /* KnittingProject.swift */; };
+		F5912CFC1053383DE38E082D /* TimerManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1B26E54FA163079B6241326 /* TimerManager.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		199DCA4D0037298D93770327 /* CountersView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CountersView.swift; sourceTree = "<group>"; };
+		23B00C30EBCB7A83FBE2F53D /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		32C7C9AE21E0B8E8EF01F13F /* PurlLabApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PurlLabApp.swift; sourceTree = "<group>"; };
+		3633C4A55B8054025112A460 /* TimerSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimerSession.swift; sourceTree = "<group>"; };
+		3C8D8AF3D4FE104EBDC2A2A3 /* PatternPDFView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatternPDFView.swift; sourceTree = "<group>"; };
+		4974FF7AC44D550D6C785133 /* GeminiService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeminiService.swift; sourceTree = "<group>"; };
+		4CD9112FA38A149EE5D1E01F /* PurlLab.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = PurlLab.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		5EFA754564E139C334F4AEBE /* ProjectListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectListView.swift; sourceTree = "<group>"; };
+		899C3D33AF11D62B1DDF1281 /* KnittingProject.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KnittingProject.swift; sourceTree = "<group>"; };
+		9C61EFFA108303FDE921107A /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		A7B33461524B84F6AADF317E /* RowCounter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RowCounter.swift; sourceTree = "<group>"; };
+		B09183BCE227B9913B32C00A /* KeychainHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainHelper.swift; sourceTree = "<group>"; };
+		B2ABEE0ADD4772F0B0270D7A /* GuideStep.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GuideStep.swift; sourceTree = "<group>"; };
+		D8CFA694A9E37477ED08F2E5 /* ProjectDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectDetailView.swift; sourceTree = "<group>"; };
+		F03DA82C19075EAC1BBC944E /* GuideView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GuideView.swift; sourceTree = "<group>"; };
+		F1B26E54FA163079B6241326 /* TimerManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimerManager.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		0198AE8BD2341223D700D009 /* PurlLab */ = {
+			isa = PBXGroup;
+			children = (
+				12FC652C13FC1443C00E433F /* App */,
+				4582591AF10B697DCAA284A7 /* Models */,
+				5B691D9B6C501BF5B82A29C6 /* Resources */,
+				C1DD112B3B3A01F65A68202C /* Services */,
+				224B43DDA82AEF3B4F131386 /* Views */,
+			);
+			path = PurlLab;
+			sourceTree = "<group>";
+		};
+		12FC652C13FC1443C00E433F /* App */ = {
+			isa = PBXGroup;
+			children = (
+				32C7C9AE21E0B8E8EF01F13F /* PurlLabApp.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		224B43DDA82AEF3B4F131386 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				38B48B9933D11249A14EA616 /* Counters */,
+				CDBC0867153320B64B6503B8 /* Guide */,
+				ACC72FE08AAC1227CC28ED97 /* PDF */,
+				7368EA3465E71889F80FE2EB /* Projects */,
+				5E1A534ADFAC9561DBD0DCA9 /* Settings */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		38B48B9933D11249A14EA616 /* Counters */ = {
+			isa = PBXGroup;
+			children = (
+				199DCA4D0037298D93770327 /* CountersView.swift */,
+			);
+			path = Counters;
+			sourceTree = "<group>";
+		};
+		4582591AF10B697DCAA284A7 /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				B2ABEE0ADD4772F0B0270D7A /* GuideStep.swift */,
+				899C3D33AF11D62B1DDF1281 /* KnittingProject.swift */,
+				A7B33461524B84F6AADF317E /* RowCounter.swift */,
+				3633C4A55B8054025112A460 /* TimerSession.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		59DF53DDD9E6109FC265D5EE /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				4CD9112FA38A149EE5D1E01F /* PurlLab.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		5B691D9B6C501BF5B82A29C6 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				23B00C30EBCB7A83FBE2F53D /* Assets.xcassets */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		5E1A534ADFAC9561DBD0DCA9 /* Settings */ = {
+			isa = PBXGroup;
+			children = (
+				9C61EFFA108303FDE921107A /* SettingsView.swift */,
+			);
+			path = Settings;
+			sourceTree = "<group>";
+		};
+		7368EA3465E71889F80FE2EB /* Projects */ = {
+			isa = PBXGroup;
+			children = (
+				D8CFA694A9E37477ED08F2E5 /* ProjectDetailView.swift */,
+				5EFA754564E139C334F4AEBE /* ProjectListView.swift */,
+			);
+			path = Projects;
+			sourceTree = "<group>";
+		};
+		ACC72FE08AAC1227CC28ED97 /* PDF */ = {
+			isa = PBXGroup;
+			children = (
+				3C8D8AF3D4FE104EBDC2A2A3 /* PatternPDFView.swift */,
+			);
+			path = PDF;
+			sourceTree = "<group>";
+		};
+		C1DD112B3B3A01F65A68202C /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				4974FF7AC44D550D6C785133 /* GeminiService.swift */,
+				B09183BCE227B9913B32C00A /* KeychainHelper.swift */,
+				F1B26E54FA163079B6241326 /* TimerManager.swift */,
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
+		CDBC0867153320B64B6503B8 /* Guide */ = {
+			isa = PBXGroup;
+			children = (
+				F03DA82C19075EAC1BBC944E /* GuideView.swift */,
+			);
+			path = Guide;
+			sourceTree = "<group>";
+		};
+		F17F49E39D6DC093B7576CF8 = {
+			isa = PBXGroup;
+			children = (
+				0198AE8BD2341223D700D009 /* PurlLab */,
+				59DF53DDD9E6109FC265D5EE /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		E52C3651096872D3979F5460 /* PurlLab */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 3DC691B9EE6BE71878EC1FC9 /* Build configuration list for PBXNativeTarget "PurlLab" */;
+			buildPhases = (
+				94DDE8C1F5974B74098A40E2 /* Sources */,
+				80BDA2E748AAF1C9CE609BD1 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = PurlLab;
+			packageProductDependencies = (
+			);
+			productName = PurlLab;
+			productReference = 4CD9112FA38A149EE5D1E01F /* PurlLab.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		4A8F33C884881E4FCC20A68A /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1600;
+				TargetAttributes = {
+				};
+			};
+			buildConfigurationList = 203CAECBF4608016D5F13075 /* Build configuration list for PBXProject "PurlLab" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = F17F49E39D6DC093B7576CF8;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 59DF53DDD9E6109FC265D5EE /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				E52C3651096872D3979F5460 /* PurlLab */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		80BDA2E748AAF1C9CE609BD1 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				26DB21CAF7D4CD5C3A0D99DB /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		94DDE8C1F5974B74098A40E2 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				59154BC65B526C9A916CB02A /* CountersView.swift in Sources */,
+				A4714E5675F3B799E1E9BA89 /* GeminiService.swift in Sources */,
+				65CDF45B4527EE05C2F4AAAA /* GuideStep.swift in Sources */,
+				0F1A9825AB02BAF58E453EF1 /* GuideView.swift in Sources */,
+				CEDA46DDBA1667561030B26D /* KeychainHelper.swift in Sources */,
+				D5B81BEB987F3C6684FA2F65 /* KnittingProject.swift in Sources */,
+				A4332D261F07396F826560D4 /* PatternPDFView.swift in Sources */,
+				69AE66B9A9B1883F71A1EF86 /* ProjectDetailView.swift in Sources */,
+				5FF30202366952EDA9B12974 /* ProjectListView.swift in Sources */,
+				0F26500457C14AD709FDD4E1 /* PurlLabApp.swift in Sources */,
+				993987771A9D607E436E48AD /* RowCounter.swift in Sources */,
+				577D0B02EFD6F343554EFFBA /* SettingsView.swift in Sources */,
+				F5912CFC1053383DE38E082D /* TimerManager.swift in Sources */,
+				8FD2FC66E246AF56C0562049 /* TimerSession.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		182BF8DCD2168F308D73C347 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		9DEB335F76CBF419DD2AFDFB /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = PurlLab;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.chiara.PurlLab;
+				PRODUCT_NAME = PurlLab;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		B15F004A00CC80B4DA0DBCAD /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		F27670DC10E7169A9102E61D /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = PurlLab;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.chiara.PurlLab;
+				PRODUCT_NAME = PurlLab;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		203CAECBF4608016D5F13075 /* Build configuration list for PBXProject "PurlLab" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				182BF8DCD2168F308D73C347 /* Debug */,
+				B15F004A00CC80B4DA0DBCAD /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		3DC691B9EE6BE71878EC1FC9 /* Build configuration list for PBXNativeTarget "PurlLab" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				9DEB335F76CBF419DD2AFDFB /* Debug */,
+				F27670DC10E7169A9102E61D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 4A8F33C884881E4FCC20A68A /* Project object */;
+}
