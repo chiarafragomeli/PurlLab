@@ -21,15 +21,26 @@ struct ProjectListView: View {
                     } description: {
                         Text("Importa un pattern PDF da File per iniziare a lavorare con la guida AI e i contatori.")
                     } actions: {
-                        Button {
-                            showingFilePicker = true
-                        } label: {
-                            Label("Importa Pattern PDF", systemImage: "doc.badge.plus")
-                                .bold()
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 8)
+                        VStack(spacing: 12) {
+                            Button {
+                                loadSamplePattern()
+                            } label: {
+                                Label("Carica No Frills Sweater (Test)", systemImage: "sparkles")
+                                    .bold()
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 4)
+                            }
+                            .buttonStyle(.borderedProminent)
+                            
+                            Button {
+                                showingFilePicker = true
+                            } label: {
+                                Label("Importa Altro Pattern da File", systemImage: "doc.badge.plus")
+                                    .frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(.bordered)
                         }
-                        .buttonStyle(.borderedProminent)
+                        .padding(.horizontal, 32)
                     }
                 } else {
                     List {
@@ -56,9 +67,15 @@ struct ProjectListView: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
                         Button {
+                            loadSamplePattern()
+                        } label: {
+                            Label("Carica No Frills Sweater (Test)", systemImage: "sparkles")
+                        }
+                        
+                        Button {
                             showingFilePicker = true
                         } label: {
-                            Label("Importa PDF Pattern", systemImage: "doc.badge.plus")
+                            Label("Importa PDF Pattern da File", systemImage: "doc.badge.plus")
                         }
                         
                         Button {
@@ -113,11 +130,35 @@ struct ProjectListView: View {
         }
     }
     
+    private func loadSamplePattern() {
+        guard let sampleUrl = Bundle.main.url(forResource: "NoFrillsSweater", withExtension: "pdf"),
+              let pdfData = try? Data(contentsOf: sampleUrl) else {
+            print("PDF di test non trovato nel bundle.")
+            return
+        }
+        
+        let project = KnittingProject(
+            title: "No Frills Sweater",
+            designer: "PetiteKnit",
+            selectedSize: "M",
+            pdfData: pdfData
+        )
+        
+        let c1 = RowCounter(title: "Ferri Principali")
+        c1.project = project
+        project.counters.append(c1)
+        
+        let c2 = RowCounter(title: "Aumenti Raglan", targetCount: 29)
+        c2.project = project
+        project.counters.append(c2)
+        
+        modelContext.insert(project)
+    }
+    
     private func handlePdfImport(_ result: Result<[URL], Error>) {
         do {
             guard let selectedUrl = try result.get().first else { return }
             
-            // Gain secure access to the file URL
             let canAccess = selectedUrl.startAccessingSecurityScopedResource()
             defer {
                 if canAccess { selectedUrl.stopAccessingSecurityScopedResource() }
@@ -131,7 +172,6 @@ struct ProjectListView: View {
                 pdfData: pdfData
             )
             
-            // Add default row counter
             let counter = RowCounter(title: "Ferro")
             counter.project = project
             project.counters.append(counter)

@@ -17,6 +17,7 @@
 		69AE66B9A9B1883F71A1EF86 /* ProjectDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D8CFA694A9E37477ED08F2E5 /* ProjectDetailView.swift */; };
 		8FD2FC66E246AF56C0562049 /* TimerSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3633C4A55B8054025112A460 /* TimerSession.swift */; };
 		993987771A9D607E436E48AD /* RowCounter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7B33461524B84F6AADF317E /* RowCounter.swift */; };
+		A1D3D71FF25305A6380FFD7D /* NoFrillsSweater.pdf in Resources */ = {isa = PBXBuildFile; fileRef = DC04E762836ABF7DDA411919 /* NoFrillsSweater.pdf */; };
 		A4332D261F07396F826560D4 /* PatternPDFView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C8D8AF3D4FE104EBDC2A2A3 /* PatternPDFView.swift */; };
 		A4714E5675F3B799E1E9BA89 /* GeminiService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4974FF7AC44D550D6C785133 /* GeminiService.swift */; };
 		CEDA46DDBA1667561030B26D /* KeychainHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = B09183BCE227B9913B32C00A /* KeychainHelper.swift */; };
@@ -39,6 +40,7 @@
 		B09183BCE227B9913B32C00A /* KeychainHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainHelper.swift; sourceTree = "<group>"; };
 		B2ABEE0ADD4772F0B0270D7A /* GuideStep.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GuideStep.swift; sourceTree = "<group>"; };
 		D8CFA694A9E37477ED08F2E5 /* ProjectDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectDetailView.swift; sourceTree = "<group>"; };
+		DC04E762836ABF7DDA411919 /* NoFrillsSweater.pdf */ = {isa = PBXFileReference; lastKnownFileType = image.pdf; path = NoFrillsSweater.pdf; sourceTree = "<group>"; };
 		F03DA82C19075EAC1BBC944E /* GuideView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GuideView.swift; sourceTree = "<group>"; };
 		F1B26E54FA163079B6241326 /* TimerManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimerManager.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -107,6 +109,7 @@
 			isa = PBXGroup;
 			children = (
 				23B00C30EBCB7A83FBE2F53D /* Assets.xcassets */,
+				DC04E762836ABF7DDA411919 /* NoFrillsSweater.pdf */,
 			);
 			path = Resources;
 			sourceTree = "<group>";
@@ -219,6 +222,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				26DB21CAF7D4CD5C3A0D99DB /* Assets.xcassets in Resources */,
+				A1D3D71FF25305A6380FFD7D /* NoFrillsSweater.pdf in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
