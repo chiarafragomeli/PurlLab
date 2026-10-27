@@ -234,13 +234,6 @@ struct GuideView: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     HStack(spacing: 12) {
                         Button {
-                            showingGaugeSheet = true
-                        } label: {
-                            Image(systemName: project.isGaugeRecalculated ? "gauge.with.needle.fill" : "gauge.with.needle")
-                                .foregroundColor(project.isGaugeRecalculated ? .indigo : .primary)
-                        }
-                        
-                        Button {
                             showingAddStepSheet = true
                         } label: {
                             Image(systemName: "plus")
@@ -695,27 +688,37 @@ struct GuideSingleCardView: View {
                         
                         // Banner interattivo Campione nella card Preparazione / Campione
                         if step.sectionTitle.localizedCaseInsensitiveContains("Preparazione") || step.instructionText.localizedCaseInsensitiveContains("Campione") {
+                            let isRecalc = (project?.isGaugeRecalculated ?? false)
                             Button {
                                 onOpenGaugeSheet()
                             } label: {
                                 HStack(spacing: 12) {
-                                    Image(systemName: "gauge.with.needle")
+                                    Image(systemName: isRecalc ? "gauge.with.needle.fill" : "gauge.with.needle")
                                         .font(.title2)
-                                        .foregroundColor(.accentColor)
+                                        .foregroundColor(isRecalc ? .indigo : .accentColor)
                                     VStack(alignment: .leading, spacing: 2) {
-                                        Text("Il tuo campione è diverso da quello del pattern?")
-                                            .font(.subheadline.bold())
-                                            .foregroundColor(.primary)
-                                        Text("Ricalcola tutto il pattern con l'AI mantenendo perfetta la taglia")
-                                            .font(.caption)
-                                            .foregroundColor(.secondary)
+                                        if isRecalc {
+                                            Text("Guida ricalibrata sul tuo campione")
+                                                .font(.subheadline.bold())
+                                                .foregroundColor(.primary)
+                                            Text("I numeri delle istruzioni sono adattati alla tua tensione reale")
+                                                .font(.caption)
+                                                .foregroundColor(.secondary)
+                                        } else {
+                                            Text("Il tuo campione è diverso da quello del pattern?")
+                                                .font(.subheadline.bold())
+                                                .foregroundColor(.primary)
+                                            Text("Ricalcola tutto il pattern con l'AI mantenendo perfetta la taglia")
+                                                .font(.caption)
+                                                .foregroundColor(.secondary)
+                                        }
                                     }
                                     Spacer()
-                                    Image(systemName: "sparkles")
-                                        .foregroundColor(.accentColor)
+                                    Image(systemName: isRecalc ? "checkmark.circle.fill" : "sparkles")
+                                        .foregroundColor(isRecalc ? .indigo : .accentColor)
                                 }
                                 .padding(12)
-                                .background(Color.accentColor.opacity(0.12))
+                                .background(isRecalc ? Color.indigo.opacity(0.12) : Color.accentColor.opacity(0.12))
                                 .cornerRadius(12)
                             }
                             .buttonStyle(.plain)
