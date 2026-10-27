@@ -2,7 +2,7 @@ import SwiftUI
 import SwiftData
 
 enum GuideDisplayMode: String, CaseIterable {
-    case card = "Card Singola"
+    case card = "Scheda"
     case list = "Elenco Sezioni"
 }
 
@@ -21,12 +21,6 @@ struct GuideView: View {
     @State private var showingDeleteSectionAlert = false
     @State private var errorMessage: String?
     @State private var showingCompletion = false
-    
-    /// Etichetta del tab della guida: nome del pattern + taglia
-    private var patternTabLabel: String {
-        let size = project.selectedSize.trimmingCharacters(in: .whitespaces)
-        return size.isEmpty ? project.title : "\(project.title) · \(size)"
-    }
     
     private var sortedSteps: [GuideStep] {
         project.guideSteps.sorted(by: { $0.orderIndex < $1.orderIndex })
@@ -150,9 +144,9 @@ struct GuideView: View {
                             .padding(.top, 4)
                         }
                         
-                        // Selettore Pattern (Card Singola) / Elenco Sezioni
+                        // Selettore Modalità Scheda / Elenco Sezioni
                         Picker("Modalità", selection: $displayMode) {
-                            Text(patternTabLabel).tag(GuideDisplayMode.card)
+                            Text(GuideDisplayMode.card.rawValue).tag(GuideDisplayMode.card)
                             Text(GuideDisplayMode.list.rawValue).tag(GuideDisplayMode.list)
                         }
                         .pickerStyle(.segmented)
@@ -224,57 +218,6 @@ struct GuideView: View {
                                 }
                             }
                             .listStyle(.insetGrouped)
-                        }
-                    }
-                }
-            }
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    HStack(spacing: 12) {
-                        Button {
-                            showingAddStepSheet = true
-                        } label: {
-                            Image(systemName: "plus")
-                                .font(.body.bold())
-                        }
-                        
-                        if !project.guideSteps.isEmpty {
-                            Menu {
-                                Button {
-                                    showingGaugeSheet = true
-                                } label: {
-                                    Label("Adatta al Campione (AI)...", systemImage: "gauge.with.needle")
-                                }
-                                
-                                Button {
-                                    showingAddStepSheet = true
-                                } label: {
-                                    Label("Aggiungi Sezione / Passaggio", systemImage: "plus.rectangle.on.rectangle")
-                                }
-                                
-                                Divider()
-                                
-                                Button {
-                                    loadPreloadedGuide()
-                                } label: {
-                                    Label("Ricarica Guida No Frills (M)", systemImage: "arrow.counterclockwise")
-                                }
-                                Button {
-                                    showingGenerateSheet = true
-                                } label: {
-                                    Label("Rigenera con Gemini AI", systemImage: "sparkles")
-                                }
-                                
-                                Divider()
-                                
-                                Button(role: .destructive) {
-                                    clearAllSteps()
-                                } label: {
-                                    Label("Svuota Tutta la Guida", systemImage: "trash")
-                                }
-                            } label: {
-                                Image(systemName: "ellipsis.circle")
-                            }
                         }
                     }
                 }
@@ -681,7 +624,7 @@ struct GuideSingleCardView: View {
                         // Testo Principale dell'Istruzione
                         Text(step.instructionText)
                             .font(.system(size: 17, weight: .regular, design: .rounded))
-                            .lineSpacing(4)
+                            .lineSpacing(5)
                             .foregroundColor(.primary)
                         
                         // Banner interattivo Campione nella card Preparazione / Campione
@@ -753,6 +696,7 @@ struct GuideSingleCardView: View {
                                         Text(subText)
                                             .font(.system(size: 15, weight: isActive ? .semibold : .regular, design: .rounded))
                                             .foregroundColor(.primary)
+                                            .lineSpacing(3)
                                             .fixedSize(horizontal: false, vertical: true)
                                     }
                                     .frame(maxWidth: .infinity, alignment: .leading)

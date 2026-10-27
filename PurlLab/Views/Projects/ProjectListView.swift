@@ -17,6 +17,10 @@ struct ProjectListView: View {
     @State private var navigationPath: [UUID] = []
     @AppStorage("didAutoLoadSampleV4") private var didAutoLoadSampleV4 = false
     
+    private var activeProjectToResume: KnittingProject? {
+        projects.first(where: { $0.completedAt == nil }) ?? projects.first
+    }
+    
     var body: some View {
         NavigationStack(path: $navigationPath) {
             Group {
@@ -49,38 +53,119 @@ struct ProjectListView: View {
                     }
                 } else {
                     List {
-                        ForEach(projects) { project in
-                            NavigationLink(value: project.id) {
-                                ProjectRowView(project: project)
-                            }
-                            .swipeActions(edge: .leading) {
-                                Button {
-                                    projectToRename = project
-                                    renameTitle = project.title
-                                    showingRenameAlert = true
-                                } label: {
-                                    Label("Rinomina", systemImage: "pencil")
+                        if let resumeProject = activeProjectToResume {
+                            Section {
+                                ResumeProjectHeroCard(project: resumeProject) {
+                                    navigationPath = [resumeProject.id]
                                 }
-                                .tint(.indigo)
-                            }
-                            .contextMenu {
-                                Button {
-                                    projectToRename = project
-                                    renameTitle = project.title
-                                    showingRenameAlert = true
-                                } label: {
-                                    Label("Rinomina Progetto", systemImage: "pencil")
-                                }
-                                Button(role: .destructive) {
-                                    if let idx = projects.firstIndex(where: { $0.id == project.id }) {
-                                        deleteProjects(at: IndexSet(integer: idx))
-                                    }
-                                } label: {
-                                    Label("Elimina Progetto", systemImage: "trash")
-                                }
+                                .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 8, trailing: 16))
+                                .listRowBackground(Color.clear)
+                                .listRowSeparator(.hidden)
+                            } header: {
+                                Text("In Lavorazione")
+                                    .font(.footnote.bold())
+                                    .foregroundColor(.secondary)
+                                    .textCase(.uppercase)
                             }
                         }
-                        .onDelete(perform: deleteProjects)
+                        
+                        Section {
+                            HStack(spacing: 12) {
+                                Button {
+                                    showingFilePicker = true
+                                } label: {
+                                    HStack(spacing: 8) {
+                                        Image(systemName: "doc.badge.plus")
+                                            .font(.headline)
+                                            .foregroundColor(.accentColor)
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text("Importa PDF")
+                                                .font(.subheadline.bold())
+                                                .foregroundColor(.primary)
+                                            Text("Pattern da File")
+                                                .font(.caption2)
+                                                .foregroundColor(.secondary)
+                                        }
+                                        Spacer()
+                                    }
+                                    .padding(12)
+                                    .background(Color(.secondarySystemGroupedBackground))
+                                    .cornerRadius(14)
+                                }
+                                .buttonStyle(.plain)
+                                
+                                Button {
+                                    showingManualNewProject = true
+                                } label: {
+                                    HStack(spacing: 8) {
+                                        Image(systemName: "plus.circle")
+                                            .font(.headline)
+                                            .foregroundColor(.indigo)
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text("Nuovo Progetto")
+                                                .font(.subheadline.bold())
+                                                .foregroundColor(.primary)
+                                            Text("Manuale / Vuoto")
+                                                .font(.caption2)
+                                                .foregroundColor(.secondary)
+                                        }
+                                        Spacer()
+                                    }
+                                    .padding(12)
+                                    .background(Color(.secondarySystemGroupedBackground))
+                                    .cornerRadius(14)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                            .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 8, trailing: 16))
+                            .listRowBackground(Color.clear)
+                            .listRowSeparator(.hidden)
+                        } header: {
+                            Text("Azioni Rapide")
+                                .font(.footnote.bold())
+                                .foregroundColor(.secondary)
+                                .textCase(.uppercase)
+                        }
+                        
+                        Section {
+                            ForEach(projects) { project in
+                                NavigationLink(value: project.id) {
+                                    ProjectRowView(project: project)
+                                }
+                                .swipeActions(edge: .leading) {
+                                    Button {
+                                        projectToRename = project
+                                        renameTitle = project.title
+                                        showingRenameAlert = true
+                                    } label: {
+                                        Label("Rinomina", systemImage: "pencil")
+                                    }
+                                    .tint(.indigo)
+                                }
+                                .contextMenu {
+                                    Button {
+                                        projectToRename = project
+                                        renameTitle = project.title
+                                        showingRenameAlert = true
+                                    } label: {
+                                        Label("Rinomina Progetto", systemImage: "pencil")
+                                    }
+                                    Button(role: .destructive) {
+                                        if let idx = projects.firstIndex(where: { $0.id == project.id }) {
+                                            deleteProjects(at: IndexSet(integer: idx))
+                                        }
+                                    } label: {
+                                        Label("Elimina Progetto", systemImage: "trash")
+                                    }
+                                }
+                            }
+                            .onDelete(perform: deleteProjects)
+                        } header: {
+                            Text("Tutti i Progetti (\(projects.count))")
+                                .font(.footnote.bold())
+                                .foregroundColor(.secondary)
+                                .textCase(.uppercase)
+                        }
                     }
                     .listStyle(.insetGrouped)
                 }
@@ -97,6 +182,11 @@ struct ProjectListView: View {
                 }
             }
             .onAppear {
+                if ProcessInfo.processInfo.arguments.contains("-openFirstProject") {
+                    if let first = projects.first {
+                        navigationPath = [first.id]
+                    }
+                }
                 
                 // Rimuovi eventuali vecchi contatori del raglan dalla scheda contatori
                 for project in projects {
@@ -292,22 +382,202 @@ struct ProjectListView: View {
     }
 }
 
+// MARK: - Hero Card per Riprendere il Progetto Attivo
+struct ResumeProjectHeroCard: View {
+    let project: KnittingProject
+    let onResume: () -> Void
+    private let haptic = UIImpactFeedbackGenerator(style: .medium)
+    
+    private var activeStep: GuideStep? {
+        project.activeWorkingStep()
+    }
+    
+    private var progressPercentage: Double {
+        let total = project.guideSteps.count
+        guard total > 0 else { return 0 }
+        let completed = project.guideSteps.filter { $0.isCompleted }.count
+        return Double(completed) / Double(total)
+    }
+    
+    private var completedStepsCount: Int {
+        project.guideSteps.filter { $0.isCompleted }.count
+    }
+    
+    var body: some View {
+        Button {
+            haptic.impactOccurred()
+            onResume()
+        } label: {
+            VStack(alignment: .leading, spacing: 12) {
+                // Top row: Badge in lavorazione & tempo
+                HStack {
+                    HStack(spacing: 6) {
+                        Circle()
+                            .fill(Color.green)
+                            .frame(width: 8, height: 8)
+                            .shadow(color: Color.green.opacity(0.8), radius: 3)
+                        
+                        Text("IN LAVORAZIONE")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundColor(.green)
+                    }
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 4)
+                    .background(Color.green.opacity(0.12))
+                    .clipShape(Capsule())
+                    
+                    Spacer()
+                    
+                    if project.totalSecondsWorked > 0 {
+                        HStack(spacing: 4) {
+                            Image(systemName: "clock")
+                            Text(TimerManager.shared.formatTime(project.totalSecondsWorked))
+                        }
+                        .font(.caption2.monospacedDigit().bold())
+                        .foregroundColor(.secondary)
+                    }
+                }
+                
+                // Titolo del progetto e designer
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(project.title)
+                        .font(.title3.bold())
+                        .foregroundColor(.primary)
+                        .lineLimit(1)
+                    
+                    HStack(spacing: 6) {
+                        if !project.designer.isEmpty {
+                            Text(project.designer)
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                        }
+                        
+                        if !project.selectedSize.isEmpty {
+                            Text("• Taglia \(project.selectedSize)")
+                                .font(.subheadline.bold())
+                                .foregroundColor(.accentColor)
+                        }
+                    }
+                }
+                
+                // Sezione e step attivo
+                if let step = activeStep {
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "hand.point.right.fill")
+                                .font(.caption)
+                                .foregroundColor(.accentColor)
+                            Text(step.sectionTitle.uppercased())
+                                .font(.caption.bold())
+                                .foregroundColor(.accentColor)
+                            Spacer()
+                            Text("Scheda \(step.orderIndex + 1) di \(project.guideSteps.count)")
+                                .font(.caption2.monospacedDigit())
+                                .foregroundColor(.secondary)
+                        }
+                        
+                        if !step.title.isEmpty {
+                            Text(step.title)
+                                .font(.footnote.weight(.medium))
+                                .foregroundColor(.primary)
+                                .lineLimit(1)
+                        }
+                    }
+                    .padding(10)
+                    .background(Color(.tertiarySystemFill))
+                    .cornerRadius(10)
+                }
+                
+                // Barra di avanzamento
+                if !project.guideSteps.isEmpty {
+                    VStack(spacing: 4) {
+                        ProgressView(value: progressPercentage)
+                            .tint(.accentColor)
+                        
+                        HStack {
+                            Text("\(completedStepsCount) di \(project.guideSteps.count) schede completate")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                            Spacer()
+                            Text(String(format: "%.0f%%", progressPercentage * 100))
+                                .font(.caption2.bold())
+                                .foregroundColor(.accentColor)
+                        }
+                    }
+                }
+                
+                // Bottone Continua
+                HStack {
+                    Text("Continua a lavorare")
+                        .font(.subheadline.bold())
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.footnote.bold())
+                }
+                .foregroundColor(.white)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+                .background(Color.accentColor)
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+            }
+            .padding(16)
+            .background(Color(.secondarySystemGroupedBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 18))
+            .shadow(color: Color.black.opacity(0.06), radius: 10, x: 0, y: 3)
+            .overlay(
+                RoundedRectangle(cornerRadius: 18)
+                    .stroke(Color.accentColor.opacity(0.25), lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+}
+
 struct ProjectRowView: View {
     let project: KnittingProject
     
+    private var progressPercentage: Double {
+        let total = project.guideSteps.count
+        guard total > 0 else { return 0 }
+        let completed = project.guideSteps.filter { $0.isCompleted }.count
+        return Double(completed) / Double(total)
+    }
+    
     var body: some View {
         HStack(spacing: 14) {
-            Image(systemName: "circle.grid.cross.fill")
-                .font(.title2)
-                .foregroundColor(.accentColor)
-                .frame(width: 44, height: 44)
-                .background(Color.accentColor.opacity(0.12))
-                .clipShape(RoundedRectangle(cornerRadius: 12))
+            ZStack {
+                Circle()
+                    .fill(project.completedAt != nil ? Color.green.opacity(0.12) : Color.accentColor.opacity(0.12))
+                    .frame(width: 44, height: 44)
+                
+                Image(systemName: project.completedAt != nil ? "checkmark.circle.fill" : "circle.grid.cross.fill")
+                    .font(.title3)
+                    .foregroundColor(project.completedAt != nil ? .green : .accentColor)
+            }
             
-            VStack(alignment: .leading, spacing: 4) {
-                Text(project.title)
-                    .font(.headline)
-                    .lineLimit(1)
+            VStack(alignment: .leading, spacing: 5) {
+                HStack {
+                    Text(project.title)
+                        .font(.headline)
+                        .foregroundColor(.primary)
+                        .lineLimit(1)
+                    
+                    Spacer()
+                    
+                    if project.completedAt != nil {
+                        Text("Completato")
+                            .font(.caption2.bold())
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.green.opacity(0.15))
+                            .foregroundColor(.green)
+                            .clipShape(Capsule())
+                    } else if !project.guideSteps.isEmpty {
+                        Text(String(format: "%.0f%%", progressPercentage * 100))
+                            .font(.caption2.bold().monospacedDigit())
+                            .foregroundColor(.accentColor)
+                    }
+                }
                 
                 HStack(spacing: 6) {
                     if !project.designer.isEmpty {
@@ -320,18 +590,14 @@ struct ProjectRowView: View {
                             .foregroundColor(.accentColor)
                             .bold()
                     }
-                    
-                    if project.completedAt != nil {
-                        Text("Completato")
-                            .font(.caption2.bold())
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(Color.green.opacity(0.15))
-                            .foregroundColor(.green)
-                            .clipShape(Capsule())
-                    }
                 }
                 .font(.subheadline)
+                
+                if !project.guideSteps.isEmpty && project.completedAt == nil {
+                    ProgressView(value: progressPercentage)
+                        .tint(.accentColor)
+                        .padding(.vertical, 2)
+                }
                 
                 HStack(spacing: 12) {
                     Label("\(project.guideSteps.count) schede", systemImage: "rectangle.stack")
@@ -342,7 +608,6 @@ struct ProjectRowView: View {
                 }
                 .font(.caption2)
                 .foregroundColor(.secondary)
-                .padding(.top, 2)
             }
         }
         .padding(.vertical, 4)

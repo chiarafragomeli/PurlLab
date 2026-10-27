@@ -1,52 +1,108 @@
 import SwiftUI
 import SwiftData
 
-struct ProjectTimerBar: View {
+enum DetailTab: String, CaseIterable {
+    case guide = "Guida"
+    case counters = "Contatori"
+    case pdf = "PDF"
+    
+    var iconName: String {
+        switch self {
+        case .guide: return "book.pages"
+        case .counters: return "number.circle"
+        case .pdf: return "doc.text"
+        }
+    }
+}
+
+struct UnifiedProjectBottomBar: View {
     @Bindable var project: KnittingProject
+    @Binding var selectedTab: DetailTab
     @State private var timerManager = TimerManager.shared
+    private let haptic = UIImpactFeedbackGenerator(style: .medium)
     
     var body: some View {
-        HStack(spacing: 16) {
-            // Play/Pause button
+        HStack(spacing: 8) {
+            // Pillola Timer di Sessione
             Button {
-                if timerManager.isRunning && timerManager.activeProjectId == project.id {
+                haptic.impactOccurred()
+                if isProjectTimerActive {
                     let duration = timerManager.pause()
                     project.totalSecondsWorked += duration
                 } else {
                     timerManager.start(for: project.id)
                 }
             } label: {
-                Image(systemName: isProjectTimerActive ? "pause.circle.fill" : "play.circle.fill")
-                    .font(.system(size: 38))
-                    .foregroundColor(isProjectTimerActive ? .orange : .accentColor)
+                HStack(spacing: 6) {
+                    Image(systemName: isProjectTimerActive ? "pause.fill" : "play.fill")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundColor(isProjectTimerActive ? .orange : .accentColor)
+                    
+                    Text(displayTimeString)
+                        .font(.system(size: 13, weight: .bold, design: .monospaced))
+                        .foregroundColor(.primary)
+                    
+                    if isProjectTimerActive {
+                        Circle()
+                            .fill(Color.green)
+                            .frame(width: 6, height: 6)
+                            .shadow(color: Color.green.opacity(0.8), radius: 3)
+                    }
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
+                .background(Color(.tertiarySystemFill))
+                .clipShape(Capsule())
             }
+            .buttonStyle(.plain)
             
-            VStack(alignment: .leading, spacing: 2) {
-                Text(isProjectTimerActive ? "Sessione in corso" : "Tempo Totale")
-                    .font(.caption2.bold())
-                    .foregroundColor(.secondary)
-                    .textCase(.uppercase)
-                
-                Text(displayTimeString)
-                    .font(.system(.title3, design: .monospaced, weight: .bold))
-                    .foregroundColor(.primary)
+            Spacer(minLength: 4)
+            
+            // Selettore Tab Guida / Contatori / PDF
+            HStack(spacing: 2) {
+                ForEach(DetailTab.allCases, id: \.self) { tab in
+                    let isSelected = (selectedTab == tab)
+                    Button {
+                        haptic.impactOccurred()
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.82)) {
+                            selectedTab = tab
+                        }
+                    } label: {
+                        HStack(spacing: 5) {
+                            Image(systemName: tab.iconName)
+                                .font(.system(size: 13, weight: isSelected ? .bold : .medium))
+                            
+                            if isSelected {
+                                Text(tab.rawValue)
+                                    .font(.system(size: 12, weight: .bold))
+                                    .lineLimit(1)
+                                    .fixedSize(horizontal: true, vertical: false)
+                            }
+                        }
+                        .padding(.horizontal, isSelected ? 12 : 9)
+                        .padding(.vertical, 7)
+                        .background(
+                            isSelected ? Color.accentColor : Color.clear
+                        )
+                        .foregroundColor(isSelected ? .white : .secondary)
+                        .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
             }
-            
-            Spacer()
-            
-            if isProjectTimerActive {
-                Circle()
-                    .fill(Color.green)
-                    .frame(width: 8, height: 8)
-                    .shadow(color: Color.green.opacity(0.8), radius: 3)
-            }
+            .padding(3)
+            .background(Color(.tertiarySystemFill))
+            .clipShape(Capsule())
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 12)
-        .background(Color(.secondarySystemGroupedBackground))
-        .clipShape(Capsule())
-        .shadow(color: Color.black.opacity(0.08), radius: 10, x: 0, y: 4)
-        .padding(.horizontal)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 7)
+        .background(
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .fill(.regularMaterial)
+                .shadow(color: Color.black.opacity(0.12), radius: 10, x: 0, y: 4)
+        )
+        .padding(.horizontal, 16)
+        .padding(.bottom, 6)
     }
     
     private var isProjectTimerActive: Bool {
@@ -70,15 +126,10 @@ struct ProjectDetailView: View {
     
     @State private var showingEditProject = false
     @State private var showingGaugeSheet = false
+    @State private var showingAddStepSheet = false
     @State private var editedTitle = ""
     @State private var editedDesigner = ""
     @State private var editedSize = ""
-    
-    enum DetailTab: String, CaseIterable {
-        case guide = "Guida"
-        case counters = "Contatori"
-        case pdf = "PDF"
-    }
     
     var body: some View {
         VStack(spacing: 0) {
@@ -114,22 +165,12 @@ struct ProjectDetailView: View {
             }
             .tabViewStyle(.page(indexDisplayMode: .never))
             
-            // Bottom Timer Bar
-            ProjectTimerBar(project: project)
-                .padding(.bottom, 8)
-            
-            // Custom Segmented Picker
-            Picker("Sezione", selection: $selectedTab) {
-                ForEach(DetailTab.allCases, id: \.self) { tab in
-                    Text(tab.rawValue).tag(tab)
-                }
-            }
-            .pickerStyle(.segmented)
-            .padding(.horizontal)
-            .padding(.bottom, 6)
+            // Barra di Controllo Unificata Inferiore (Timer + Selettore Schede)
+            UnifiedProjectBottomBar(project: project, selectedTab: $selectedTab)
         }
         .navigationTitle(project.selectedSize.isEmpty ? project.title : "\(project.title) · \(project.selectedSize)")
         .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(true)
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 Button {
@@ -154,17 +195,36 @@ struct ProjectDetailView: View {
                             .foregroundColor(project.isGaugeRecalculated ? .indigo : .accentColor)
                     }
                     
-                    Button {
-                        editedTitle = project.title
-                        editedDesigner = project.designer
-                        editedSize = project.selectedSize
-                        showingEditProject = true
+                    Menu {
+                        Button {
+                            editedTitle = project.title
+                            editedDesigner = project.designer
+                            editedSize = project.selectedSize
+                            showingEditProject = true
+                        } label: {
+                            Label("Modifica Info Progetto", systemImage: "pencil")
+                        }
+                        
+                        Button {
+                            showingAddStepSheet = true
+                        } label: {
+                            Label("Aggiungi Scheda Guida", systemImage: "plus.rectangle.on.rectangle")
+                        }
+                        
+                        Button {
+                            showingGaugeSheet = true
+                        } label: {
+                            Label("Adatta al Campione (AI)...", systemImage: "gauge.with.needle")
+                        }
                     } label: {
-                        Image(systemName: "pencil.circle")
+                        Image(systemName: "ellipsis.circle")
                             .font(.body)
                     }
                 }
             }
+        }
+        .sheet(isPresented: $showingAddStepSheet) {
+            AddGuideStepSheet(project: project)
         }
         .sheet(isPresented: $showingGaugeSheet) {
             GaugeRecalculationView(project: project)
