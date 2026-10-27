@@ -999,6 +999,7 @@ struct CardCounterBoxView: View {
                     TimerManager.shared.registerInteraction()
                     haptic.impactOccurred()
                     step.currentStepCount += 1
+                    WatchConnectivityIOSManager.shared.syncAllProjectsToWatch()
                     if isTargetReached { successHaptic.notificationOccurred(.success) }
                 } label: {
                     Image(systemName: "plus")

@@ -7,6 +7,16 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+
+		B01000000000000000000001 /* WatchConnectivityIOSManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = F01000000000000000000001 /* WatchConnectivityIOSManager.swift */; };
+		B02000000000000000000002 /* WatchModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = F02000000000000000000002 /* WatchModels.swift */; };
+		B02000000000000000000003 /* WatchModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = F02000000000000000000002 /* WatchModels.swift */; };
+		B03000000000000000000004 /* PurlLabWatchApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = F03000000000000000000003 /* PurlLabWatchApp.swift */; };
+		B04000000000000000000005 /* WatchCounterView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F04000000000000000000004 /* WatchCounterView.swift */; };
+		B05000000000000000000006 /* WatchProjectListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F05000000000000000000005 /* WatchProjectListView.swift */; };
+		B06000000000000000000007 /* WatchConnectivityManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = F06000000000000000000006 /* WatchConnectivityManager.swift */; };
+		B07000000000000000000008 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = F07000000000000000000007 /* Assets.xcassets */; };
+		W08888888888888888888888 /* PurlLabWatch.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = W07777777777777777777777 /* PurlLabWatch.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		81FA378129F01B2E00112233 /* GaugeRecalculationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81FA378029F01B2E00112233 /* GaugeRecalculationView.swift */; };
 		09B0864FE338D3382FC25C7D /* GuideCompletionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3122C4020207D8901745592B /* GuideCompletionView.swift */; };
 		0F1A9825AB02BAF58E453EF1 /* GuideView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F03DA82C19075EAC1BBC944E /* GuideView.swift */; };
@@ -29,6 +39,15 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+
+		F01000000000000000000001 /* WatchConnectivityIOSManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchConnectivityIOSManager.swift; sourceTree = "<group>"; };
+		F02000000000000000000002 /* WatchModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchModels.swift; sourceTree = "<group>"; };
+		F03000000000000000000003 /* PurlLabWatchApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PurlLabWatchApp.swift; sourceTree = "<group>"; };
+		F04000000000000000000004 /* WatchCounterView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchCounterView.swift; sourceTree = "<group>"; };
+		F05000000000000000000005 /* WatchProjectListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchProjectListView.swift; sourceTree = "<group>"; };
+		F06000000000000000000006 /* WatchConnectivityManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchConnectivityManager.swift; sourceTree = "<group>"; };
+		F07000000000000000000007 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		W07777777777777777777777 /* PurlLabWatch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PurlLabWatch.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		199DCA4D0037298D93770327 /* CountersView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CountersView.swift; sourceTree = "<group>"; };
 		23B00C30EBCB7A83FBE2F53D /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		3122C4020207D8901745592B /* GuideCompletionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GuideCompletionView.swift; sourceTree = "<group>"; };
@@ -52,6 +71,43 @@
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
+
+		G01000000000000000000001 /* PurlLabWatch */ = {
+			isa = PBXGroup;
+			children = (
+				F03000000000000000000003 /* PurlLabWatchApp.swift */,
+				G02000000000000000000002 /* Views */,
+				G03000000000000000000003 /* Services */,
+				G04000000000000000000004 /* Resources */,
+			);
+			path = PurlLabWatch;
+			sourceTree = "<group>";
+		};
+		G02000000000000000000002 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				F04000000000000000000004 /* WatchCounterView.swift */,
+				F05000000000000000000005 /* WatchProjectListView.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		G03000000000000000000003 /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				F06000000000000000000006 /* WatchConnectivityManager.swift */,
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
+		G04000000000000000000004 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				F07000000000000000000007 /* Assets.xcassets */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
 		0198AE8BD2341223D700D009 /* PurlLab */ = {
 			isa = PBXGroup;
 			children = (
@@ -95,6 +151,7 @@
 		4582591AF10B697DCAA284A7 /* Models */ = {
 			isa = PBXGroup;
 			children = (
+				F02000000000000000000002 /* WatchModels.swift */,
 				B2ABEE0ADD4772F0B0270D7A /* GuideStep.swift */,
 				899C3D33AF11D62B1DDF1281 /* KnittingProject.swift */,
 				A7B33461524B84F6AADF317E /* RowCounter.swift */,
@@ -107,6 +164,7 @@
 			isa = PBXGroup;
 			children = (
 				4CD9112FA38A149EE5D1E01F /* PurlLab.app */,
+				W07777777777777777777777 /* PurlLabWatch.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -149,6 +207,7 @@
 		C1DD112B3B3A01F65A68202C /* Services */ = {
 			isa = PBXGroup;
 			children = (
+				F01000000000000000000001 /* WatchConnectivityIOSManager.swift */,
 				4974FF7AC44D550D6C785133 /* GeminiService.swift */,
 				B09183BCE227B9913B32C00A /* KeychainHelper.swift */,
 				F1B26E54FA163079B6241326 /* TimerManager.swift */,
@@ -170,6 +229,7 @@
 			isa = PBXGroup;
 			children = (
 				0198AE8BD2341223D700D009 /* PurlLab */,
+				G01000000000000000000001 /* PurlLabWatch */,
 				59DF53DDD9E6109FC265D5EE /* Products */,
 			);
 			sourceTree = "<group>";
@@ -177,16 +237,37 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+
+		W01111111111111111111111 /* PurlLabWatch */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = W02222222222222222222222 /* Build configuration list for PBXNativeTarget "PurlLabWatch" */;
+			buildPhases = (
+				W05555555555555555555555 /* Sources */,
+				W06666666666666666666666 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = PurlLabWatch;
+			packageProductDependencies = (
+			);
+			productName = PurlLabWatch;
+			productReference = W07777777777777777777777 /* PurlLabWatch.app */;
+			productType = "com.apple.product-type.application";
+		};
 		E52C3651096872D3979F5460 /* PurlLab */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 3DC691B9EE6BE71878EC1FC9 /* Build configuration list for PBXNativeTarget "PurlLab" */;
 			buildPhases = (
 				94DDE8C1F5974B74098A40E2 /* Sources */,
 				80BDA2E748AAF1C9CE609BD1 /* Resources */,
+				W09999999999999999999999 /* Embed Watch Content */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				W0AAAAAAAAAA111111111111 /* PBXTargetDependency */,
 			);
 			name = PurlLab;
 			packageProductDependencies = (
@@ -196,6 +277,39 @@
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
+
+
+/* Begin PBXContainerItemProxy section */
+		W0BBBBBBBBBB222222222222 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 4A8F33C884881E4FCC20A68A /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = W01111111111111111111111;
+			remoteInfo = PurlLabWatch;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		W09999999999999999999999 /* Embed Watch Content */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "$(CONTENTS_FOLDER_PATH)/Watch";
+			dstSubfolderSpec = 16;
+			files = (
+				W08888888888888888888888 /* PurlLabWatch.app in Embed Watch Content */,
+			);
+			name = "Embed Watch Content";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		W0AAAAAAAAAA111111111111 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = W01111111111111111111111 /* PurlLabWatch */;
+			targetProxy = W0BBBBBBBBBB222222222222 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin PBXProject section */
 		4A8F33C884881E4FCC20A68A /* Project object */ = {
@@ -221,6 +335,7 @@
 			projectRoot = "";
 			targets = (
 				E52C3651096872D3979F5460 /* PurlLab */,
+				W01111111111111111111111 /* PurlLabWatch */,
 			);
 		};
 /* End PBXProject section */
@@ -239,10 +354,33 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+
+		W05555555555555555555555 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B02000000000000000000003 /* WatchModels.swift in Sources */,
+				B03000000000000000000004 /* PurlLabWatchApp.swift in Sources */,
+				B04000000000000000000005 /* WatchCounterView.swift in Sources */,
+				B05000000000000000000006 /* WatchProjectListView.swift in Sources */,
+				B06000000000000000000007 /* WatchConnectivityManager.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		W06666666666666666666666 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B07000000000000000000008 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		94DDE8C1F5974B74098A40E2 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				B01000000000000000000001 /* WatchConnectivityIOSManager.swift in Sources */,
+				B02000000000000000000002 /* WatchModels.swift in Sources */,
 				81FA378129F01B2E00112233 /* GaugeRecalculationView.swift in Sources */,
 				59154BC65B526C9A916CB02A /* CountersView.swift in Sources */,
 				A4714E5675F3B799E1E9BA89 /* GeminiService.swift in Sources */,
@@ -265,6 +403,59 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin XCBuildConfiguration section */
+
+		W03333333333333333333333 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = PurlLab;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
+				INFOPLIST_KEY_WKApplication = YES;
+				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = com.chiara.PurlLab;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.chiara.PurlLab.watchkitapp;
+				PRODUCT_NAME = PurlLabWatch;
+				SDKROOT = watchos;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 10.0;
+			};
+			name = Debug;
+		};
+		W04444444444444444444444 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = PurlLab;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
+				INFOPLIST_KEY_WKApplication = YES;
+				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = com.chiara.PurlLab;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.chiara.PurlLab.watchkitapp;
+				PRODUCT_NAME = PurlLabWatch;
+				SDKROOT = watchos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 10.0;
+			};
+			name = Release;
+		};
 		182BF8DCD2168F308D73C347 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -435,6 +626,16 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+
+		W02222222222222222222222 /* Build configuration list for PBXNativeTarget "PurlLabWatch" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				W03333333333333333333333 /* Debug */,
+				W04444444444444444444444 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
 		203CAECBF4608016D5F13075 /* Build configuration list for PBXProject "PurlLab" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

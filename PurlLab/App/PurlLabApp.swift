@@ -24,6 +24,9 @@ struct PurlLabApp: App {
     var body: some Scene {
         WindowGroup {
             ProjectListView()
+                .onAppear {
+                    WatchConnectivityIOSManager.shared.configure(with: sharedModelContainer.mainContext)
+                }
         }
         .modelContainer(sharedModelContainer)
         .onChange(of: scenePhase) { _, newPhase in

@@ -33,7 +33,9 @@ final class TimerManager {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            self?.handleAppDidEnterBackground()
+            Task { @MainActor in
+                self?.handleAppDidEnterBackground()
+            }
         }
         
         NotificationCenter.default.addObserver(
@@ -41,7 +43,9 @@ final class TimerManager {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            self?.handleAppWillEnterForeground()
+            Task { @MainActor in
+                self?.handleAppWillEnterForeground()
+            }
         }
     }
     
@@ -89,6 +93,7 @@ final class TimerManager {
         elapsedSecondsInCurrentSession = 0
         
         startTicker()
+        WatchConnectivityIOSManager.shared.syncAllProjectsToWatch()
     }
     
     func pause() -> TimeInterval {
@@ -100,6 +105,7 @@ final class TimerManager {
         elapsedSecondsInCurrentSession = 0
         sessionStartDate = nil
         backgroundEntryDate = nil
+        WatchConnectivityIOSManager.shared.syncAllProjectsToWatch()
         return sessionDuration
     }
     
@@ -123,7 +129,9 @@ final class TimerManager {
         
         // Timer con tolleranza per consentire a iOS di accorpare i risvegli della CPU (Energy Coalescing)
         let newTimer = Timer(timeInterval: 1.0, repeats: true) { [weak self] _ in
-            self?.tick()
+            Task { @MainActor in
+                self?.tick()
+            }
         }
         newTimer.tolerance = 0.25 // 250ms di tolleranza raccomandata da Apple
         RunLoop.main.add(newTimer, forMode: .common)

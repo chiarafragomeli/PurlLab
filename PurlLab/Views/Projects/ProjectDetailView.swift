@@ -183,6 +183,9 @@ struct ProjectDetailView: View {
             }
             .presentationDetents([.medium])
         }
+        .onAppear {
+            WatchConnectivityIOSManager.shared.setActiveProject(project)
+        }
         .onDisappear {
             // Salva la sessione attiva se si esce dal progetto
             if TimerManager.shared.isRunning && TimerManager.shared.activeProjectId == project.id {

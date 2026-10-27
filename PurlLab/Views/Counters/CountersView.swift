@@ -83,6 +83,7 @@ struct CounterCardView: View {
                     }
                     Button {
                         counter.reset()
+                        WatchConnectivityIOSManager.shared.syncAllProjectsToWatch()
                     } label: {
                         Label("Azzera", systemImage: "arrow.counterclockwise")
                     }
@@ -107,6 +108,7 @@ struct CounterCardView: View {
                     TimerManager.shared.registerInteraction()
                     haptic.impactOccurred()
                     counter.decrement()
+                    WatchConnectivityIOSManager.shared.syncAllProjectsToWatch()
                 } label: {
                     Image(systemName: "minus")
                         .font(.title2.bold())
@@ -131,6 +133,7 @@ struct CounterCardView: View {
                     TimerManager.shared.registerInteraction()
                     haptic.impactOccurred()
                     counter.increment()
+                    WatchConnectivityIOSManager.shared.syncAllProjectsToWatch()
                     if isAtTarget {
                         successHaptic.notificationOccurred(.success)
                     }
