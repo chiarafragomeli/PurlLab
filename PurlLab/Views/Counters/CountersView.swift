@@ -20,6 +20,10 @@ struct CountersView: View {
                 // MARK: - 2. SEZIONE ATTUALMENTE IN LAVORAZIONE
                 if let step = activeStep {
                     ActiveSectionCounterCard(project: project, step: step)
+                } else if let mainCounter = project.counters.first(where: { $0.title.localizedCaseInsensitiveContains("globale") }) ?? project.counters.first {
+                    CounterCardView(counter: mainCounter) {
+                        deleteCounter(mainCounter)
+                    }
                 }
                 
                 // MARK: - 3. PANORAMICA SEZIONI DELLA GUIDA
@@ -114,13 +118,13 @@ struct GlobalProjectStatsCard: View {
                 .background(Color.indigo.opacity(0.08))
                 .cornerRadius(16)
                 
-                // Ferri Lavorati Totali
+                // Contatore Globale
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 4) {
                         Image(systemName: "number.circle.fill")
                             .font(.caption)
                             .foregroundColor(Color(red: 0.850, green: 0.350, blue: 0.550))
-                        Text("Ferri Totali")
+                        Text("Contatore Globale")
                             .font(.caption.bold())
                             .foregroundColor(.secondary)
                     }
@@ -473,7 +477,9 @@ struct CustomCountersSection: View {
     private var customCounters: [RowCounter] {
         project.counters.filter { counter in
             !counter.title.localizedCaseInsensitiveContains("globale") &&
-            !counter.title.localizedCaseInsensitiveContains("ferri principali")
+            !counter.title.localizedCaseInsensitiveContains("ferri principali") &&
+            counter.title.localizedCaseInsensitiveCompare("ferro") != .orderedSame &&
+            counter.title.localizedCaseInsensitiveCompare("ferri") != .orderedSame
         }.sorted(by: { $0.orderIndex < $1.orderIndex })
     }
     

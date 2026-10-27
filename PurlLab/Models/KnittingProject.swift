@@ -47,9 +47,12 @@ final class KnittingProject {
 
 // MARK: - Statistiche e Schede di Lavoro
 extension KnittingProject {
-    /// Calcola il numero totale di ferri lavorati attraverso tutte le schede della guida
+    /// Calcola il numero totale di ferri lavorati attraverso tutte le schede della guida (o del contatore globale)
     var totalGuideRowsWorked: Int {
-        guideSteps.reduce(0) { $0 + $1.currentStepCount }
+        if !guideSteps.isEmpty {
+            return guideSteps.reduce(0) { $0 + $1.currentStepCount }
+        }
+        return counters.first(where: { $0.title.localizedCaseInsensitiveContains("globale") })?.currentCount ?? counters.first?.currentCount ?? 0
     }
     
     /// Calcola il numero totale di maglie lavorate nel progetto finora.

@@ -95,8 +95,10 @@ final class WatchConnectivityIOSManager: NSObject, WCSessionDelegate {
         let counterLabel: String
         if let lbl = activeStep?.counterLabel, !lbl.trimmingCharacters(in: .whitespaces).isEmpty {
             counterLabel = lbl
+        } else if let mainCounter = p.counters.first(where: { $0.title.localizedCaseInsensitiveContains("globale") }) ?? p.counters.first {
+            counterLabel = mainCounter.title
         } else {
-            counterLabel = "Ferri"
+            counterLabel = "Contatore Globale"
         }
         
         let currentCount = activeStep?.currentStepCount ?? (p.counters.first?.currentCount ?? 0)

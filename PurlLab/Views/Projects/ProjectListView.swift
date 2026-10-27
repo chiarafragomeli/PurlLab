@@ -114,9 +114,9 @@ struct ProjectListView: View {
                         }
                     }
                     
-                    // Aggiorna "Ferri Principali" nel nuovo nome "Contatore Globale"
+                    // Aggiorna vecchi nomi nel nuovo nome "Contatore Globale"
                     for counter in project.counters {
-                        if counter.title == "Ferri Principali" {
+                        if counter.title == "Ferri Principali" || counter.title == "Ferro" || counter.title == "Ferri" {
                             counter.title = "Contatore Globale"
                         }
                     }
@@ -287,7 +287,7 @@ struct ProjectListView: View {
                 pdfData: pdfData
             )
             
-            let counter = RowCounter(title: "Ferro")
+            let counter = RowCounter(title: "Contatore Globale")
             counter.project = project
             project.counters.append(counter)
             
