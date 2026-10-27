@@ -424,11 +424,30 @@ struct GaugeRecalculationView: View {
         errorMessage = nil
         
         let pTitle = project.title
+        let pDesigner = project.designer
         let pSize = project.selectedSize
-        let pdf = project.pdfData
-        let stepsDesc = project.guideSteps.sorted(by: { $0.orderIndex < $1.orderIndex }).map { step in
-            "[\(step.sectionTitle)] \(step.title) (Tipo: \(step.stepType), Maglie prima: \(step.stitchCountBefore ?? 0), Maglie dopo: \(step.stitchCountAfter ?? 0), Ferri/Target: \(step.targetStepCount ?? 0)): \(step.instructionText)"
-        }.joined(separator: "\n")
+        let sorted = project.guideSteps.sorted(by: { $0.orderIndex < $1.orderIndex })
+        let snapshots: [GaugeStepSnapshot] = sorted.enumerated().map { idx, step in
+            GaugeStepSnapshot(
+                index: idx,
+                sectionTitle: step.sectionTitle,
+                title: step.title,
+                stepType: step.stepType,
+                instruction: step.instructionText,
+                subSteps: step.subSteps,
+                repeatVariations: step.repeatVariations,
+                rowsPerRepeat: step.rowsPerRepeat,
+                totalRepeats: step.totalRepeats,
+                stitchCountBefore: step.stitchCountBefore,
+                stitchCountAfter: step.stitchCountAfter,
+                targetMeasureCm: step.targetMeasureCm,
+                hasCounter: step.hasCounter,
+                counterLabel: step.counterLabel,
+                targetStepCount: step.targetStepCount,
+                sourcePage: step.sourcePage,
+                sourceQuote: step.sourceQuote
+            )
+        }
         
         let pSts = patternStitches
         let pRws = patternRows
@@ -439,9 +458,9 @@ struct GaugeRecalculationView: View {
             do {
                 let response = try await GeminiService.shared.recalculateGuideForGauge(
                     patternTitle: pTitle,
+                    designer: pDesigner,
                     targetSize: pSize,
-                    pdfData: pdf,
-                    currentStepsDescription: stepsDesc,
+                    snapshots: snapshots,
                     patternStitches: pSts,
                     patternRows: pRws,
                     userStitches: uSts,

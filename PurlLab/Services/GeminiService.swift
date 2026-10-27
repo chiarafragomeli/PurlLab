@@ -7,7 +7,48 @@ struct GeneratedGuideResponse: Codable {
     let gauge: String?
     let needles: [String]?
     var recalculationSummary: String?
+    var changedStepTitles: [String]? = nil
     let sections: [GeneratedSection]
+}
+
+struct GaugeStepSnapshot: Codable, Sendable {
+    let index: Int
+    let sectionTitle: String
+    let title: String
+    let stepType: String
+    let instruction: String
+    let subSteps: [String]
+    let repeatVariations: [String]
+    let rowsPerRepeat: Int?
+    let totalRepeats: Int?
+    let stitchCountBefore: Int?
+    let stitchCountAfter: Int?
+    let targetMeasureCm: Double?
+    let hasCounter: Bool
+    let counterLabel: String?
+    let targetStepCount: Int?
+    let sourcePage: Int?
+    let sourceQuote: String?
+}
+
+struct GaugeTextReplacement: Codable, Sendable {
+    let original: String
+    let replacement: String
+}
+
+struct GaugeStepPatch: Codable, Sendable {
+    let index: Int
+    let stitchCountBefore: Int?
+    let stitchCountAfter: Int?
+    let rowsPerRepeat: Int?
+    let totalRepeats: Int?
+    let targetStepCount: Int?
+    let replacements: [GaugeTextReplacement]?
+}
+
+struct GaugePatchResponse: Codable, Sendable {
+    let recalculationSummary: String?
+    let steps: [GaugeStepPatch]
 }
 
 struct GeneratedSection: Codable {
@@ -311,12 +352,14 @@ final class GeminiService: @unchecked Sendable {
     
     // MARK: - Ricalcolo Pattern per Campione Personalizzato (AI & Locale)
     
-    /// Ricalcola l'intera guida operativa con Gemini AI in base al campione personalizzato dell'utente
+    /// Chiede a Gemini SOLO quali numeri cambiare (maglie, ferri, ripetizioni) in base al campione dell'utente.
+    /// L'AI non riscrive mai i testi: restituisce coppie "originale → sostituzione" e i nuovi conteggi numerici,
+    /// che l'app applica ai testi originali scartando qualsiasi modifica che non sia puramente numerica.
     func recalculateGuideForGauge(
         patternTitle: String,
+        designer: String,
         targetSize: String,
-        pdfData: Data?,
-        currentStepsDescription: String,
+        snapshots: [GaugeStepSnapshot],
         patternStitches: Double,
         patternRows: Double,
         userStitches: Double,
@@ -334,138 +377,88 @@ final class GeminiService: @unchecked Sendable {
         let effectiveSize = targetSize.isEmpty ? "M" : targetSize
         let stitchRatio = userStitches / patternStitches
         let rowRatio = userRows / patternRows
-        let stitchDiffPct = String(format: "%+.1f%%", (stitchRatio - 1.0) * 100)
-        let rowDiffPct = String(format: "%+.1f%%", (rowRatio - 1.0) * 100)
         
         let systemPrompt = """
-        Sei una knitwear designer esperta, tecnica tessile e maestra di maglia.
-        Il tuo compito è RICALCOLARE MATEMATICAMENTE l'INTERA guida operativa a scheda singola per la taglia "\(effectiveSize)" in LINGUA ITALIANA, adattandola al CAMPIONE REALE ottenuto dall'utente con il proprio filato.
+        Sei una tecnica di maglia che esegue SOLO calcoli numerici. NON sei un'autrice: non scrivi, non riformuli, non inventi alcuna parola.
         
-        DATI DEL CAMPIONE (misurato su 10 × 10 cm a maglia rasata):
-        - Campione originale del pattern: \(patternStitches) maglie × \(patternRows) ferri
-        - Campione reale dell'utente: \(userStitches) maglie × \(userRows) ferri
-        - Variazione larghezza (maglie): \(stitchDiffPct) (fattore di scala: \(String(format: "%.4f", stitchRatio)))
-        - Variazione altezza (ferri): \(rowDiffPct) (fattore di scala: \(String(format: "%.4f", rowRatio)))
+        Ricevi i passaggi esatti di un pattern (taglia "\(effectiveSize)") in JSON. Devi indicare quali NUMERI cambiano per adattare il pattern al campione dell'utente.
         
-        REGOLE FONDAMENTALI DI RICALCOLO:
-        1. LE DIMENSIONI IN CENTIMETRI DEL CAPO NON DEVONO CAMBIARE:
-           - Tutte le misure finite in cm (circonferenza torace, lunghezza corpo, lunghezza maniche, profondità sprone) devono rimanere IDENTICHE a quelle originali previste dal cartamodello per la taglia "\(effectiveSize)".
-        2. RICALCOLO DELLE MAGLIE:
-           - Ogni conteggio di maglie (avvio del collo, maglie davanti/dietro/maniche, maglie sottomanica, maglie ai polsini) deve essere ricalcolato moltiplicando per il fattore \(String(format: "%.4f", stitchRatio)) e arrotondato opportunamente.
-           - Mantieni la parità/modularità richiesta dal motivo (es. coste 1/1 = numero pari; coste 2/2 = multiplo di 4).
-           - Mantieni la perfetta simmetria tra davanti e dietro e tra manica destra e sinistra.
-        3. RICALCOLO DEI FERRI E DELLE RIPETIZIONI (repeat_pattern e work_to_measure):
-           - Per le sezioni lavorate a centimetri (stepType = "work_to_measure"), il conteggio stimato dei giri (targetStepCount) deve corrispondere a: (userRows / 10.0 * targetMeasureCm).
-           - Per gli aumenti raglan e le diminuzioni sagomate delle maniche, adatta il numero totale di ripetizioni (totalRepeats) e ferri (rowsPerRepeat * totalRepeats) in modo che alla fine dello sprone si ottengano sia i centimetri che il nuovo totale di maglie corretto per il corpo e le maniche.
-        4. AGGIORNAMENTO TESTI E CONTATORI:
-           - Ogni singola istruzione (`instruction`, `subSteps`, `repeatVariations`, `title`, `counterLabel`) DEVE RIPORTARE I NUOVI NUMERI RICALCOLATI.
-           - I nomi delle sezioni devono essere solo in italiano (es. "Preparazione", "Collo e Impostazione Sprone", "Sprone", "Corpo", "Manica Destra", "Manica Sinistra").
-        5. RIEPILOGO DELLE MODIFICHE:
-           - Inserisci nel campo "recalculationSummary" un riassunto chiaro e dettagliato in italiano di tutte le modifiche chiave apportate (es. "Avvio collo: 114 m → 104 m (-8.8%) | Sprone: 26 ripetizioni raglan anziché 29 | Maniche: 68 m → 62 m | Dimensioni finali in cm preservate").
+        CAMPIONE (10 × 10 cm):
+        - Pattern: \(patternStitches) maglie × \(patternRows) ferri
+        - Utente: \(userStitches) maglie × \(userRows) ferri
+        - Fattore maglie: \(String(format: "%.4f", stitchRatio)) — Fattore ferri: \(String(format: "%.4f", rowRatio))
+        
+        REGOLE ASSOLUTE (ZERO CREATIVITÀ):
+        1. Le istruzioni restano IDENTICHE parola per parola. Cambiano SOLO i numeri di maglie, ferri/giri e ripetizioni.
+        2. NON modificare MAI: misure in cm, misure dei ferri in mm, numeri di pagina, nomi di punti, ordine dei passaggi, nomi delle sezioni.
+        3. NON aggiungere né togliere passaggi, frasi, consigli o note.
+        4. Ricalcolo maglie: moltiplica per il fattore maglie e arrotonda rispettando la modularità del punto (coste 1/1 = pari, coste 2/2 = multiplo di 4) e la simmetria davanti/dietro e tra le maniche.
+        5. Ricalcolo ferri: le lavorazioni "a misura" mantengono i cm; aggiorna solo il numero stimato di giri (fattore ferri). Per aumenti/diminuzioni ripetuti adatta il numero di ripetizioni in modo che i totali di maglie risultino coerenti con i nuovi conteggi.
+        6. Coerenza: i conteggi devono tornare da un passaggio all'altro (stitchCountAfter di un passaggio = stitchCountBefore del successivo, quando collegati).
+        
+        FORMATO DELLE SOSTITUZIONI ("replacements"):
+        - "original" è un frammento ESATTO copiato dal testo del passaggio (titolo, istruzione, sotto-passaggi, variazioni o etichetta contatore), contenente il numero e una parola di contesto (es. "114 maglie", "per 29 volte", "58 giri", "28 m").
+        - "replacement" è lo STESSO frammento con SOLO le cifre cambiate (es. "104 maglie", "per 26 volte", "52 giri", "26 m").
+        - Qualsiasi sostituzione che cambi parole, punteggiatura o aggiunga testo verrà scartata automaticamente dal codice.
+        - Includi solo i passaggi in cui cambia almeno un numero. Usa il campo "index" del passaggio.
+        
+        "recalculationSummary": un elenco sintetico e puramente numerico dei cambi principali (es. "Avvio collo: 114 → 104 m | Aumenti raglan: 29 → 26 ripetizioni"). Nessun commento aggiuntivo.
         """
         
-        var userContentParts: [[String: Any]] = []
+        let snapshotJSON = String(data: try JSONEncoder().encode(snapshots), encoding: .utf8) ?? "[]"
+        let userPrompt = """
+        Pattern: "\(patternTitle)" — taglia \(effectiveSize).
+        Passaggi (JSON):
+        \(snapshotJSON)
         
-        if let pdfData = pdfData {
-            let base64Pdf = pdfData.base64EncodedString()
-            userContentParts.append([
-                "inline_data": [
-                    "mime_type": "application/pdf",
-                    "data": base64Pdf
-                ]
-            ])
-            userContentParts.append([
-                "text": "Ricalcola l'intero cartamodello per la taglia \(effectiveSize) adattandolo al campione dell'utente (\(userStitches) m × \(userRows) f rispetto all'originale \(patternStitches) m × \(patternRows) f). Restituisci la guida operativa completa ricalcolata in formato JSON."
-            ])
-        } else {
-            userContentParts.append([
-                "text": """
-                Ecco la guida attuale del pattern "\(patternTitle)" per la taglia "\(effectiveSize)":
-                \(currentStepsDescription)
-                
-                Ricalcola ciascuna sezione e passaggio adattando ogni numero al campione utente (\(userStitches) m × \(userRows) f vs originale \(patternStitches) m × \(patternRows) f). Restituisci la guida operativa completa ricalcolata in formato JSON.
-                """
-            ])
-        }
+        Restituisci solo le modifiche numeriche secondo le regole.
+        """
         
         let jsonSchema: [String: Any] = [
             "type": "OBJECT",
             "properties": [
-                "patternTitle": ["type": "STRING"],
-                "designer": ["type": "STRING"],
-                "targetSize": ["type": "STRING"],
-                "gauge": ["type": "STRING"],
-                "needles": [
-                    "type": "ARRAY",
-                    "items": ["type": "STRING"]
-                ],
-                "recalculationSummary": [
-                    "type": "STRING",
-                    "description": "Riepilogo in italiano delle modifiche numeriche apportate (maglie avviate, ripetizioni raglan, ferri totali)"
-                ],
-                "sections": [
+                "recalculationSummary": ["type": "STRING"],
+                "steps": [
                     "type": "ARRAY",
                     "items": [
                         "type": "OBJECT",
                         "properties": [
-                            "name": ["type": "STRING"],
-                            "steps": [
+                            "index": ["type": "INTEGER"],
+                            "stitchCountBefore": ["type": "INTEGER"],
+                            "stitchCountAfter": ["type": "INTEGER"],
+                            "rowsPerRepeat": ["type": "INTEGER"],
+                            "totalRepeats": ["type": "INTEGER"],
+                            "targetStepCount": ["type": "INTEGER"],
+                            "replacements": [
                                 "type": "ARRAY",
                                 "items": [
                                     "type": "OBJECT",
                                     "properties": [
-                                        "title": ["type": "STRING"],
-                                        "stepType": [
-                                            "type": "STRING",
-                                            "enum": ["info", "single_action", "repeat_pattern", "work_to_measure"]
-                                        ],
-                                        "instruction": ["type": "STRING"],
-                                        "subSteps": [
-                                            "type": "ARRAY",
-                                            "items": ["type": "STRING"]
-                                        ],
-                                        "repeatVariations": [
-                                            "type": "ARRAY",
-                                            "items": ["type": "STRING"]
-                                        ],
-                                        "rowsPerRepeat": ["type": "INTEGER"],
-                                        "totalRepeats": ["type": "INTEGER"],
-                                        "stitchCountBefore": ["type": "INTEGER"],
-                                        "stitchCountAfter": ["type": "INTEGER"],
-                                        "targetMeasureCm": ["type": "NUMBER"],
-                                        "hasCounter": ["type": "BOOLEAN"],
-                                        "counterLabel": ["type": "STRING"],
-                                        "targetStepCount": ["type": "INTEGER"],
-                                        "sourcePage": ["type": "INTEGER"],
-                                        "sourceQuote": ["type": "STRING"]
+                                        "original": ["type": "STRING"],
+                                        "replacement": ["type": "STRING"]
                                     ],
-                                    "required": ["title", "stepType", "instruction", "hasCounter"]
+                                    "required": ["original", "replacement"]
                                 ]
                             ]
                         ],
-                        "required": ["name", "steps"]
+                        "required": ["index"]
                     ]
                 ]
             ],
-            "required": ["patternTitle", "targetSize", "sections"]
+            "required": ["recalculationSummary", "steps"]
         ]
         
         let requestBody: [String: Any] = [
             "contents": [
-                [
-                    "role": "user",
-                    "parts": userContentParts
-                ]
+                ["role": "user", "parts": [["text": userPrompt]]]
             ],
             "system_instruction": [
-                "parts": [
-                    ["text": systemPrompt]
-                ]
+                "parts": [["text": systemPrompt]]
             ],
             "generationConfig": [
                 "response_mime_type": "application/json",
                 "response_schema": jsonSchema,
-                "temperature": 0.1,
+                "temperature": 0.0,
                 "thinkingConfig": [
                     "thinkingBudget": 4096
                 ]
@@ -515,7 +508,16 @@ final class GeminiService: @unchecked Sendable {
                         throw GeminiError.parsingError("Nessun testo JSON generato da Gemini")
                     }
                     
-                    return try JSONDecoder().decode(GeneratedGuideResponse.self, from: jsonData)
+                    let patch = try JSONDecoder().decode(GaugePatchResponse.self, from: jsonData)
+                    return Self.applyGaugePatch(
+                        snapshots: snapshots,
+                        patch: patch,
+                        patternTitle: patternTitle,
+                        designer: designer,
+                        targetSize: effectiveSize,
+                        userStitches: userStitches,
+                        userRows: userRows
+                    )
                 } else {
                     let errorText = String(data: data, encoding: .utf8) ?? "Status code: \(httpResponse.statusCode)"
                     lastError = GeminiError.networkError("HTTP \(httpResponse.statusCode): \(errorText)")
@@ -530,7 +532,178 @@ final class GeminiService: @unchecked Sendable {
         throw lastError ?? GeminiError.networkError("Impossibile contattare i modelli Gemini per il ricalcolo.")
     }
     
-    /// Ricalcolo matematico locale istantaneo di fallback (funziona anche offline e senza API key)
+    /// Una sostituzione è accettata solo se cambia esclusivamente cifre (stesse parole, stessa punteggiatura)
+    /// e non tocca misure in cm/mm o numeri di pagina.
+    static func isNumericOnlyChange(original: String, replacement: String) -> Bool {
+        guard !original.isEmpty, original != replacement else { return false }
+        let strip: (String) -> String = { $0.filter { !$0.isNumber } }
+        guard strip(original) == strip(replacement) else { return false }
+        guard original.contains(where: { $0.isNumber }) else { return false }
+        let lower = original.lowercased()
+        let protected = ["cm", "mm", "pag", "pagina"]
+        return !protected.contains(where: { lower.contains($0) })
+    }
+    
+    /// Sostituisce nei testi originali un vecchio numero con il nuovo nei contesti tipici di maglia,
+    /// lasciando intatto ogni carattere non numerico.
+    private static func replaceNumberInContext(in text: String, oldVal: Int, newVal: Int, units: [String]) -> String {
+        guard oldVal != newVal, oldVal > 0 else { return text }
+        var updated = text
+        for unit in units {
+            updated = updated.replacingOccurrences(of: "\(oldVal) \(unit)", with: "\(newVal) \(unit)")
+            updated = updated.replacingOccurrences(of: "(\(oldVal) \(unit))", with: "(\(newVal) \(unit))")
+        }
+        return updated
+    }
+    
+    /// Applica la patch numerica ai testi ORIGINALI dei passaggi: i testi non vengono mai riscritti dall'AI,
+    /// vengono solo sostituiti i frammenti numerici validati.
+    static func applyGaugePatch(
+        snapshots: [GaugeStepSnapshot],
+        patch: GaugePatchResponse,
+        patternTitle: String,
+        designer: String,
+        targetSize: String,
+        userStitches: Double,
+        userRows: Double
+    ) -> GeneratedGuideResponse {
+        let patchByIndex = Dictionary(patch.steps.map { ($0.index, $0) }, uniquingKeysWith: { first, _ in first })
+        var changeLog: [String] = []
+        var discarded = 0
+        
+        var sectionOrder: [String] = []
+        var stepsBySection: [String: [GeneratedStep]] = [:]
+        
+        for snap in snapshots {
+            var title = snap.title
+            var instruction = snap.instruction
+            var subSteps = snap.subSteps
+            var variations = snap.repeatVariations
+            var counterLabel = snap.counterLabel
+            var stepChanged = false
+            
+            let p = patchByIndex[snap.index]
+            
+            // 1. Applica le sostituzioni testuali puntuali validate (solo cifre cambiate)
+            for rep in p?.replacements ?? [] {
+                guard isNumericOnlyChange(original: rep.original, replacement: rep.replacement) else {
+                    discarded += 1
+                    continue
+                }
+                let allTexts = [title, instruction, counterLabel ?? ""] + subSteps + variations
+                guard allTexts.contains(where: { $0.contains(rep.original) }) else {
+                    discarded += 1
+                    continue
+                }
+                title = title.replacingOccurrences(of: rep.original, with: rep.replacement)
+                instruction = instruction.replacingOccurrences(of: rep.original, with: rep.replacement)
+                subSteps = subSteps.map { $0.replacingOccurrences(of: rep.original, with: rep.replacement) }
+                variations = variations.map { $0.replacingOccurrences(of: rep.original, with: rep.replacement) }
+                counterLabel = counterLabel?.replacingOccurrences(of: rep.original, with: rep.replacement)
+                stepChanged = true
+            }
+            
+            // 2. Campi numerici aggiornati solo se presenti nel passaggio originale
+            let newBefore = snap.stitchCountBefore != nil ? (p?.stitchCountBefore ?? snap.stitchCountBefore) : nil
+            let newAfter = snap.stitchCountAfter != nil ? (p?.stitchCountAfter ?? snap.stitchCountAfter) : nil
+            let newRowsPerRepeat = snap.rowsPerRepeat != nil ? (p?.rowsPerRepeat ?? snap.rowsPerRepeat) : nil
+            let newRepeats = snap.totalRepeats != nil ? (p?.totalRepeats ?? snap.totalRepeats) : nil
+            var newTarget = snap.targetStepCount != nil ? (p?.targetStepCount ?? snap.targetStepCount) : nil
+            if snap.stepType == "repeat_pattern", let r = newRepeats, let rpr = newRowsPerRepeat {
+                newTarget = r * rpr
+            }
+            
+            // 3. Allineamento automatico dei numeri nei testi qualora un valore numerico sia cambiato
+            let stitchUnits = ["maglie", "m", "m.", "punti"]
+            let repeatUnits = ["volte", "ripetizioni", "cicli"]
+            let rowUnits = ["ferri", "giri"]
+            
+            if let oldB = snap.stitchCountBefore, let recB = newBefore, oldB != recB {
+                title = replaceNumberInContext(in: title, oldVal: oldB, newVal: recB, units: stitchUnits)
+                instruction = replaceNumberInContext(in: instruction, oldVal: oldB, newVal: recB, units: stitchUnits)
+                subSteps = subSteps.map { replaceNumberInContext(in: $0, oldVal: oldB, newVal: recB, units: stitchUnits) }
+                variations = variations.map { replaceNumberInContext(in: $0, oldVal: oldB, newVal: recB, units: stitchUnits) }
+            }
+            if let oldA = snap.stitchCountAfter, let recA = newAfter, oldA != recA {
+                title = replaceNumberInContext(in: title, oldVal: oldA, newVal: recA, units: stitchUnits)
+                instruction = replaceNumberInContext(in: instruction, oldVal: oldA, newVal: recA, units: stitchUnits)
+                subSteps = subSteps.map { replaceNumberInContext(in: $0, oldVal: oldA, newVal: recA, units: stitchUnits) }
+                variations = variations.map { replaceNumberInContext(in: $0, oldVal: oldA, newVal: recA, units: stitchUnits) }
+            }
+            if let oldR = snap.totalRepeats, let recR = newRepeats, oldR != recR {
+                title = replaceNumberInContext(in: title, oldVal: oldR, newVal: recR, units: repeatUnits)
+                instruction = replaceNumberInContext(in: instruction, oldVal: oldR, newVal: recR, units: repeatUnits)
+                subSteps = subSteps.map { replaceNumberInContext(in: $0, oldVal: oldR, newVal: recR, units: repeatUnits) }
+                variations = variations.map { replaceNumberInContext(in: $0, oldVal: oldR, newVal: recR, units: repeatUnits) }
+                if let lbl = counterLabel {
+                    counterLabel = replaceNumberInContext(in: lbl, oldVal: oldR, newVal: recR, units: repeatUnits)
+                }
+            }
+            if let oldT = snap.targetStepCount, let recT = newTarget, oldT != recT {
+                title = replaceNumberInContext(in: title, oldVal: oldT, newVal: recT, units: rowUnits + stitchUnits)
+                instruction = replaceNumberInContext(in: instruction, oldVal: oldT, newVal: recT, units: rowUnits + stitchUnits)
+                subSteps = subSteps.map { replaceNumberInContext(in: $0, oldVal: oldT, newVal: recT, units: rowUnits + stitchUnits) }
+                variations = variations.map { replaceNumberInContext(in: $0, oldVal: oldT, newVal: recT, units: rowUnits + stitchUnits) }
+                if let lbl = counterLabel {
+                    counterLabel = replaceNumberInContext(in: lbl, oldVal: oldT, newVal: recT, units: rowUnits + stitchUnits)
+                }
+            }
+            
+            if newBefore != snap.stitchCountBefore || newAfter != snap.stitchCountAfter
+                || newRepeats != snap.totalRepeats || newTarget != snap.targetStepCount
+                || newRowsPerRepeat != snap.rowsPerRepeat {
+                stepChanged = true
+            }
+            if stepChanged {
+                changeLog.append(snap.title.isEmpty ? snap.sectionTitle : snap.title)
+            }
+            
+            let genStep = GeneratedStep(
+                title: title,
+                stepType: snap.stepType,
+                instruction: instruction,
+                subSteps: subSteps,
+                repeatVariations: variations,
+                rowsPerRepeat: newRowsPerRepeat,
+                totalRepeats: newRepeats,
+                stitchCountBefore: newBefore,
+                stitchCountAfter: newAfter,
+                targetMeasureCm: snap.targetMeasureCm,
+                hasCounter: snap.hasCounter,
+                counterLabel: counterLabel,
+                targetStepCount: newTarget,
+                sourcePage: snap.sourcePage,
+                sourceQuote: snap.sourceQuote
+            )
+            
+            if stepsBySection[snap.sectionTitle] == nil {
+                stepsBySection[snap.sectionTitle] = []
+                sectionOrder.append(snap.sectionTitle)
+            }
+            stepsBySection[snap.sectionTitle]?.append(genStep)
+        }
+        
+        var summary = patch.recalculationSummary ?? ""
+        summary += summary.isEmpty ? "" : "\n"
+        summary += "Testi originali preservati parola per parola: aggiornati solo i numeri in \(changeLog.count) schede."
+        if discarded > 0 {
+            summary += " (\(discarded) modifiche non numeriche scartate)."
+        }
+        
+        return GeneratedGuideResponse(
+            patternTitle: patternTitle,
+            designer: designer,
+            targetSize: targetSize,
+            gauge: "\(Int(userStitches)) maglie × \(Int(userRows)) ferri = 10 × 10 cm (Campione Utente)",
+            needles: nil,
+            recalculationSummary: summary,
+            changedStepTitles: changeLog,
+            sections: sectionOrder.map { GeneratedSection(name: $0, steps: stepsBySection[$0] ?? []) }
+        )
+    }
+    
+    /// Ricalcolo matematico locale istantaneo di fallback (funziona anche offline e senza API key),
+    /// mantiene i testi identici parola per parola sostituendo esclusivamente i valori numerici.
     static func recalculateGuideLocally(
         project: KnittingProject,
         patternStitches: Double,
@@ -543,7 +716,6 @@ final class GeminiService: @unchecked Sendable {
         
         let sortedSteps = project.guideSteps.sorted(by: { $0.orderIndex < $1.orderIndex })
         
-        // Raggruppa per sezione preservando l'ordine
         var sectionMap: [String: [GuideStep]] = [:]
         var sectionOrder: [String] = []
         for step in sortedSteps {
@@ -555,6 +727,10 @@ final class GeminiService: @unchecked Sendable {
         }
         
         var generatedSections: [GeneratedSection] = []
+        var changedTitles: [String] = []
+        let stitchUnits = ["maglie", "m", "m.", "punti"]
+        let repeatUnits = ["volte", "ripetizioni", "cicli"]
+        let rowUnits = ["ferri", "giri"]
         
         for secTitle in sectionOrder {
             let steps = sectionMap[secTitle] ?? []
@@ -567,6 +743,8 @@ final class GeminiService: @unchecked Sendable {
                 var newTargetStepCount = step.targetStepCount
                 var newInstruction = step.instructionText
                 var newTitle = step.title
+                var newSubSteps = step.subSteps
+                var newVariations = step.repeatVariations
                 var newCounterLabel = step.counterLabel
                 
                 // Ricalcola maglie
@@ -575,7 +753,6 @@ final class GeminiService: @unchecked Sendable {
                 }
                 if let a = step.stitchCountAfter, a > 0 {
                     var recalculatedA = max(1, Int(round(Double(a) * stitchRatio)))
-                    // Se avvio coste 1/1 assicurati sia pari
                     if step.sectionTitle.localizedCaseInsensitiveContains("Collo") || step.title.localizedCaseInsensitiveContains("Avvio") {
                         if recalculatedA % 2 != 0 { recalculatedA += 1 }
                     }
@@ -585,7 +762,6 @@ final class GeminiService: @unchecked Sendable {
                 // Ricalcola ferri / ripetizioni
                 if step.stepType == "repeat_pattern" {
                     if let repeats = step.totalRepeats, repeats > 0 {
-                        // Se sono aumenti raglan (+8 maglie), scala le ripetizioni per il ratio maglie
                         if step.sectionTitle.localizedCaseInsensitiveContains("Sprone") || step.title.localizedCaseInsensitiveContains("Raglan") {
                             newTotalRepeats = max(1, Int(round(Double(repeats) * stitchRatio)))
                         } else {
@@ -611,31 +787,49 @@ final class GeminiService: @unchecked Sendable {
                     }
                 }
                 
-                // Aggiorna testi numerici
+                // Aggiorna esclusivamente i numeri nei testi originali (titolo, istruzione, sotto-passaggi, variazioni, contatore)
+                if let oldB = step.stitchCountBefore, let recB = newBefore, oldB != recB {
+                    newTitle = replaceNumberInContext(in: newTitle, oldVal: oldB, newVal: recB, units: stitchUnits)
+                    newInstruction = replaceNumberInContext(in: newInstruction, oldVal: oldB, newVal: recB, units: stitchUnits)
+                    newSubSteps = newSubSteps.map { replaceNumberInContext(in: $0, oldVal: oldB, newVal: recB, units: stitchUnits) }
+                    newVariations = newVariations.map { replaceNumberInContext(in: $0, oldVal: oldB, newVal: recB, units: stitchUnits) }
+                }
                 if let oldA = step.stitchCountAfter, let recA = newAfter, oldA != recA {
-                    newTitle = newTitle.replacingOccurrences(of: "\(oldA)", with: "\(recA)")
-                    newInstruction = newInstruction.replacingOccurrences(of: "\(oldA) maglie", with: "\(recA) maglie")
-                    newInstruction = newInstruction.replacingOccurrences(of: "\(oldA) m", with: "\(recA) m")
+                    newTitle = replaceNumberInContext(in: newTitle, oldVal: oldA, newVal: recA, units: stitchUnits)
+                    newInstruction = replaceNumberInContext(in: newInstruction, oldVal: oldA, newVal: recA, units: stitchUnits)
+                    newSubSteps = newSubSteps.map { replaceNumberInContext(in: $0, oldVal: oldA, newVal: recA, units: stitchUnits) }
+                    newVariations = newVariations.map { replaceNumberInContext(in: $0, oldVal: oldA, newVal: recA, units: stitchUnits) }
                 }
                 if let oldR = step.totalRepeats, let recR = newTotalRepeats, oldR != recR {
-                    newTitle = newTitle.replacingOccurrences(of: "\(oldR) volte", with: "\(recR) volte")
-                    newTitle = newTitle.replacingOccurrences(of: "\(oldR) ripetizioni", with: "\(recR) ripetizioni")
-                    newInstruction = newInstruction.replacingOccurrences(of: "\(oldR) volte", with: "\(recR) volte")
+                    newTitle = replaceNumberInContext(in: newTitle, oldVal: oldR, newVal: recR, units: repeatUnits)
+                    newInstruction = replaceNumberInContext(in: newInstruction, oldVal: oldR, newVal: recR, units: repeatUnits)
+                    newSubSteps = newSubSteps.map { replaceNumberInContext(in: $0, oldVal: oldR, newVal: recR, units: repeatUnits) }
+                    newVariations = newVariations.map { replaceNumberInContext(in: $0, oldVal: oldR, newVal: recR, units: repeatUnits) }
                     if let lbl = newCounterLabel {
-                        newCounterLabel = lbl.replacingOccurrences(of: "\(oldR)", with: "\(recR)")
+                        newCounterLabel = replaceNumberInContext(in: lbl, oldVal: oldR, newVal: recR, units: repeatUnits)
                     }
                 }
                 if let oldT = step.targetStepCount, let recT = newTargetStepCount, oldT != recT {
-                    newTitle = newTitle.replacingOccurrences(of: "\(oldT) ferri", with: "\(recT) ferri")
-                    newTitle = newTitle.replacingOccurrences(of: "\(oldT) giri", with: "\(recT) giri")
+                    newTitle = replaceNumberInContext(in: newTitle, oldVal: oldT, newVal: recT, units: rowUnits + stitchUnits)
+                    newInstruction = replaceNumberInContext(in: newInstruction, oldVal: oldT, newVal: recT, units: rowUnits + stitchUnits)
+                    newSubSteps = newSubSteps.map { replaceNumberInContext(in: $0, oldVal: oldT, newVal: recT, units: rowUnits + stitchUnits) }
+                    newVariations = newVariations.map { replaceNumberInContext(in: $0, oldVal: oldT, newVal: recT, units: rowUnits + stitchUnits) }
+                    if let lbl = newCounterLabel {
+                        newCounterLabel = replaceNumberInContext(in: lbl, oldVal: oldT, newVal: recT, units: rowUnits + stitchUnits)
+                    }
+                }
+                
+                if newBefore != step.stitchCountBefore || newAfter != step.stitchCountAfter
+                    || newTotalRepeats != step.totalRepeats || newTargetStepCount != step.targetStepCount {
+                    changedTitles.append(newTitle.isEmpty ? secTitle : newTitle)
                 }
                 
                 let genStep = GeneratedStep(
                     title: newTitle,
                     stepType: step.stepType,
                     instruction: newInstruction,
-                    subSteps: step.subSteps,
-                    repeatVariations: step.repeatVariations,
+                    subSteps: newSubSteps,
+                    repeatVariations: newVariations,
                     rowsPerRepeat: step.rowsPerRepeat,
                     totalRepeats: newTotalRepeats,
                     stitchCountBefore: newBefore,
@@ -655,7 +849,7 @@ final class GeminiService: @unchecked Sendable {
         
         let stitchPct = String(format: "%+.1f%%", (stitchRatio - 1.0) * 100)
         let rowPct = String(format: "%+.1f%%", (rowRatio - 1.0) * 100)
-        let summary = "Ricalcolo Matematico Locale: Campione adattato da \(Int(patternStitches)) m × \(Int(patternRows)) f a \(Int(userStitches)) m × \(Int(userRows)) f per 10 cm (Maglie: \(stitchPct), Ferri: \(rowPct)). Misure sartoriali in cm preservate."
+        let summary = "Ricalcolo Matematico Locale: Campione adattato da \(Int(patternStitches)) m × \(Int(patternRows)) f a \(Int(userStitches)) m × \(Int(userRows)) f per 10 cm (Maglie: \(stitchPct), Ferri: \(rowPct)). Testi originali intatti: aggiornati solo i numeri in \(changedTitles.count) schede."
         
         return GeneratedGuideResponse(
             patternTitle: project.title,
@@ -664,6 +858,7 @@ final class GeminiService: @unchecked Sendable {
             gauge: "\(Int(userStitches)) maglie × \(Int(userRows)) ferri = 10 × 10 cm (Campione Utente)",
             needles: nil,
             recalculationSummary: summary,
+            changedStepTitles: changedTitles,
             sections: generatedSections
         )
     }
