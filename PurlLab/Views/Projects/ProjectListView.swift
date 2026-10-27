@@ -96,12 +96,6 @@ struct ProjectListView: View {
                     navigationPath = [projectId]
                 }
             }
-            .task {
-                try? await Task.sleep(nanoseconds: 250_000_000)
-                if let activeId = WatchConnectivityIOSManager.shared.activeProjectId ?? projects.first?.id {
-                    navigationPath = [activeId]
-                }
-            }
             .onAppear {
                 
                 // Rimuovi eventuali vecchi contatori del raglan dalla scheda contatori

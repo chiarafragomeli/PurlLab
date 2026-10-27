@@ -228,8 +228,6 @@ struct GuideView: View {
                     }
                 }
             }
-            .navigationTitle(displayMode == .card && !project.guideSteps.isEmpty ? patternTabLabel : "Elenco Sezioni")
-            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     HStack(spacing: 12) {

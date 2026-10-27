@@ -128,9 +128,22 @@ struct ProjectDetailView: View {
             .padding(.horizontal)
             .padding(.bottom, 6)
         }
-        .navigationTitle(project.title)
+        .navigationTitle(project.selectedSize.isEmpty ? project.title : "\(project.title) · \(project.selectedSize)")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                Button {
+                    dismiss()
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "chevron.left")
+                            .font(.body.weight(.semibold))
+                        Text("Progetti")
+                            .font(.body)
+                    }
+                }
+            }
+            
             ToolbarItem(placement: .topBarTrailing) {
                 HStack(spacing: 12) {
                     Button {
