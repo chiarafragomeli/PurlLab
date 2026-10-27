@@ -99,7 +99,9 @@ struct GlobalProjectStatsCard: View {
                     }
                     
                     Text("\(project.totalStitchesWorked)")
-                        .font(.system(size: 34, weight: .bold, design: .rounded))
+                        .font(.system(size: 24, weight: .bold, design: .rounded))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
                         .foregroundColor(.indigo)
                         .contentTransition(.numericText())
                     
@@ -130,7 +132,9 @@ struct GlobalProjectStatsCard: View {
                     }
                     
                     Text("\(project.totalGuideRowsWorked)")
-                        .font(.system(size: 34, weight: .bold, design: .rounded))
+                        .font(.system(size: 24, weight: .bold, design: .rounded))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
                         .foregroundColor(Color(red: 0.850, green: 0.350, blue: 0.550))
                         .contentTransition(.numericText())
                     
@@ -320,8 +324,8 @@ struct ActiveSectionCounterCard: View {
                 }
             } label: {
                 Image(systemName: "minus")
-                    .font(.title3.bold())
-                    .frame(width: 48, height: 48)
+                    .font(.callout.bold())
+                    .frame(width: 42, height: 42)
                     .background(Color(.systemGray6))
                     .clipShape(Circle())
                     .foregroundColor(.primary)
@@ -331,15 +335,15 @@ struct ActiveSectionCounterCard: View {
             Spacer()
             
             VStack(spacing: 2) {
-                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                HStack(alignment: .firstTextBaseline, spacing: 3) {
                     Text("\(step.currentStepCount)")
-                        .font(.system(size: 48, weight: .bold, design: .rounded))
+                        .font(.system(size: 32, weight: .bold, design: .rounded))
                         .foregroundColor(isTargetReached ? .green : .primary)
                         .contentTransition(.numericText())
                     
                     if let target = step.targetStepCount, target > 0 {
                         Text("/ \(target)")
-                            .font(.title3.weight(.semibold))
+                            .font(.system(size: 18, weight: .semibold, design: .rounded))
                             .foregroundColor(.secondary)
                     }
                 }
@@ -361,9 +365,9 @@ struct ActiveSectionCounterCard: View {
                 }
             } label: {
                 Image(systemName: "plus")
-                    .font(.title2.bold())
+                    .font(.headline.bold())
                     .foregroundColor(.white)
-                    .frame(width: 58, height: 58)
+                    .frame(width: 46, height: 46)
                     .background(isTargetReached ? Color.green : Color(red: 0.850, green: 0.350, blue: 0.550))
                     .clipShape(Circle())
                     .shadow(color: (isTargetReached ? Color.green : Color(red: 0.850, green: 0.350, blue: 0.550)).opacity(0.35), radius: 6, x: 0, y: 3)
@@ -578,7 +582,7 @@ struct CounterCardView: View {
             }
             
             // Number & Action Controls
-            HStack(spacing: 20) {
+            HStack(spacing: 16) {
                 // Decrement Button
                 Button {
                     TimerManager.shared.registerInteraction()
@@ -587,8 +591,8 @@ struct CounterCardView: View {
                     WatchConnectivityIOSManager.shared.syncAllProjectsToWatch()
                 } label: {
                     Image(systemName: "minus")
-                        .font(.title2.bold())
-                        .frame(width: 52, height: 52)
+                        .font(.callout.bold())
+                        .frame(width: 42, height: 42)
                         .background(Color(.systemGray6))
                         .clipShape(Circle())
                 }
@@ -598,7 +602,7 @@ struct CounterCardView: View {
                 
                 // Count Display
                 Text("\(counter.currentCount)")
-                    .font(.system(size: 54, weight: .bold, design: .rounded))
+                    .font(.system(size: 32, weight: .bold, design: .rounded))
                     .foregroundColor(isAtTarget ? .green : .primary)
                     .contentTransition(.numericText())
                 
@@ -615,9 +619,9 @@ struct CounterCardView: View {
                     }
                 } label: {
                     Image(systemName: "plus")
-                        .font(.title.bold())
+                        .font(.headline.bold())
                         .foregroundColor(.white)
-                        .frame(width: 64, height: 64)
+                        .frame(width: 46, height: 46)
                         .background(Color.accentColor)
                         .clipShape(Circle())
                         .shadow(color: Color.accentColor.opacity(0.35), radius: 6, x: 0, y: 3)

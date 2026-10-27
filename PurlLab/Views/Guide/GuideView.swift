@@ -288,7 +288,10 @@ struct GuideView: View {
                 }
             }
             .onAppear {
-                if let firstIncomplete = sortedSteps.firstIndex(where: { !$0.isCompleted }) {
+                if let active = project.activeWorkingStep(),
+                   let idx = sortedSteps.firstIndex(where: { $0.id == active.id }) {
+                    currentStepIndex = idx
+                } else if let firstIncomplete = sortedSteps.firstIndex(where: { !$0.isCompleted }) {
                     currentStepIndex = firstIncomplete
                 }
                 if currentStepIndex < sortedSteps.count {
@@ -983,8 +986,8 @@ struct CardCounterBoxView: View {
                     .tint(isTargetReached ? .green : .accentColor)
             }
             
-            // Contatore globale: - valore +
-            HStack(spacing: 20) {
+            // Contatore integrato: - valore +
+            HStack(spacing: 16) {
                 Button {
                     TimerManager.shared.registerInteraction()
                     haptic.impactOccurred()
@@ -997,9 +1000,9 @@ struct CardCounterBoxView: View {
                     }
                 } label: {
                     Image(systemName: "minus")
-                        .font(.title3.bold())
+                        .font(.callout.bold())
                         .foregroundColor(.primary)
-                        .frame(width: 48, height: 48)
+                        .frame(width: 42, height: 42)
                         .background(Color(.systemGray5))
                         .clipShape(Circle())
                 }
@@ -1007,13 +1010,13 @@ struct CardCounterBoxView: View {
                 
                 Spacer()
                 
-                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                HStack(alignment: .firstTextBaseline, spacing: 3) {
                     Text("\(step.currentStepCount)")
-                        .font(.system(size: 44, weight: .bold, design: .rounded))
+                        .font(.system(size: 30, weight: .bold, design: .rounded))
                         .foregroundColor(isTargetReached ? .green : .primary)
                     if let target = effectiveTarget {
                         Text("/ \(target)")
-                            .font(.title3.bold())
+                            .font(.system(size: 17, weight: .semibold, design: .rounded))
                             .foregroundColor(.secondary)
                     }
                 }
@@ -1032,9 +1035,9 @@ struct CardCounterBoxView: View {
                     if isTargetReached { successHaptic.notificationOccurred(.success) }
                 } label: {
                     Image(systemName: "plus")
-                        .font(.title2.bold())
+                        .font(.headline.bold())
                         .foregroundColor(.white)
-                        .frame(width: 58, height: 58)
+                        .frame(width: 46, height: 46)
                         .background(isTargetReached ? Color.green : Color.accentColor)
                         .clipShape(Circle())
                         .shadow(color: (isTargetReached ? Color.green : Color.accentColor).opacity(0.35), radius: 6, x: 0, y: 3)
