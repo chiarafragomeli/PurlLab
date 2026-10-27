@@ -1038,6 +1038,9 @@ struct CardCounterBoxView: View {
             .buttonStyle(.plain)
             .foregroundColor(.accentColor)
         }
+        .onAppear {
+            haptic.prepare()
+        }
         .padding(16)
         .background(Color(.tertiarySystemGroupedBackground))
         .cornerRadius(18)

@@ -72,6 +72,11 @@ struct PDFKitRepresentedView: UIViewRepresentable {
         
         init(_ parent: PDFKitRepresentedView) {
             self.parent = parent
+            super.init()
+        }
+        
+        deinit {
+            NotificationCenter.default.removeObserver(self)
         }
         
         @objc func pageChanged(_ notification: Notification) {

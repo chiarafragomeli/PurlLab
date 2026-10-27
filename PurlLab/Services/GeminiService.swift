@@ -114,13 +114,18 @@ final class GeminiService: @unchecked Sendable {
         let cleanKey = rawKey.trimmingCharacters(in: .whitespacesAndNewlines)
         guard cleanKey.count >= 20 else { throw GeminiError.invalidApiKeyFormat }
         
-        let urlString = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=\(cleanKey)"
+        // URL pulito: la chiave API è inviata cifrata solo nell'header TLS (x-goog-api-key)
+        // per evitare che appaia in chiaro nei log proxy o cronologia URL
+        let urlString = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
         guard let url = URL(string: urlString) else { throw GeminiError.invalidURL }
         
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
-        request.timeoutInterval = 15
+        request.timeoutInterval = 20
+        request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+        request.networkServiceType = .responsiveData
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(cleanKey, forHTTPHeaderField: "x-goog-api-key")
         let testBody: [String: Any] = [
             "contents": [["role": "user", "parts": [["text": "ping"]]]]
         ]
@@ -294,12 +299,14 @@ final class GeminiService: @unchecked Sendable {
         var lastError: Error?
         
         for model in candidateModels {
-            let urlString = "https://generativelanguage.googleapis.com/v1beta/models/\(model):generateContent?key=\(apiKey)"
+            let urlString = "https://generativelanguage.googleapis.com/v1beta/models/\(model):generateContent"
             guard let url = URL(string: urlString) else { continue }
             
             var request = URLRequest(url: url)
             request.httpMethod = "POST"
-            request.timeoutInterval = 150
+            request.timeoutInterval = 60
+            request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+            request.networkServiceType = .responsiveData
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             request.setValue(apiKey, forHTTPHeaderField: "x-goog-api-key")
             request.httpBody = bodyData
@@ -470,12 +477,14 @@ final class GeminiService: @unchecked Sendable {
         var lastError: Error?
         
         for model in candidateModels {
-            let urlString = "https://generativelanguage.googleapis.com/v1beta/models/\(model):generateContent?key=\(apiKey)"
+            let urlString = "https://generativelanguage.googleapis.com/v1beta/models/\(model):generateContent"
             guard let url = URL(string: urlString) else { continue }
             
             var request = URLRequest(url: url)
             request.httpMethod = "POST"
-            request.timeoutInterval = 150
+            request.timeoutInterval = 60
+            request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+            request.networkServiceType = .responsiveData
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             request.setValue(apiKey, forHTTPHeaderField: "x-goog-api-key")
             request.httpBody = bodyData

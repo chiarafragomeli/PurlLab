@@ -3,6 +3,8 @@ import SwiftData
 
 @main
 struct PurlLabApp: App {
+    @Environment(\.scenePhase) private var scenePhase
+    
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
             KnittingProject.self,
@@ -24,5 +26,12 @@ struct PurlLabApp: App {
             ProjectListView()
         }
         .modelContainer(sharedModelContainer)
+        .onChange(of: scenePhase) { _, newPhase in
+            if newPhase == .background {
+                TimerManager.shared.handleAppDidEnterBackground()
+            } else if newPhase == .active {
+                TimerManager.shared.handleAppWillEnterForeground()
+            }
+        }
     }
 }

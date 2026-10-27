@@ -37,9 +37,8 @@ struct ProjectTimerBar: View {
             if isProjectTimerActive {
                 Circle()
                     .fill(Color.green)
-                    .frame(width: 10, height: 10)
-                    .scaleEffect(1.2)
-                    .animation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true), value: isProjectTimerActive)
+                    .frame(width: 8, height: 8)
+                    .shadow(color: Color.green.opacity(0.8), radius: 3)
             }
         }
         .padding(.horizontal, 20)
@@ -63,6 +62,8 @@ struct ProjectTimerBar: View {
 struct ProjectDetailView: View {
     @Bindable var project: KnittingProject
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var modelContext
+    @Environment(\.scenePhase) private var scenePhase
     @State private var selectedTab: DetailTab = .guide
     @State private var targetPdfPage: Int = 1
     
@@ -183,10 +184,25 @@ struct ProjectDetailView: View {
             .presentationDetents([.medium])
         }
         .onDisappear {
-            // Save active session if leaving project
+            // Salva la sessione attiva se si esce dal progetto
             if TimerManager.shared.isRunning && TimerManager.shared.activeProjectId == project.id {
                 let duration = TimerManager.shared.pause()
                 project.totalSecondsWorked += duration
+                try? modelContext.save()
+            }
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            // Se l'app va in background o lo schermo viene bloccato, memorizza subito
+            // i secondi lavorati per prevenire perdite dati in caso di sospensione o chiusura da iOS
+            if newPhase == .background || newPhase == .inactive {
+                if TimerManager.shared.isRunning && TimerManager.shared.activeProjectId == project.id {
+                    let chunk = TimerManager.shared.flushElapsedToTotal()
+                    if chunk > 0 {
+                        project.totalSecondsWorked += chunk
+                        project.updatedAt = Date()
+                        try? modelContext.save()
+                    }
+                }
             }
         }
     }

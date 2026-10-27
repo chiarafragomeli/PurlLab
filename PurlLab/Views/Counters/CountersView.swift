@@ -149,6 +149,9 @@ struct CounterCardView: View {
         .background(Color(.secondarySystemGroupedBackground))
         .cornerRadius(18)
         .shadow(color: Color.black.opacity(0.04), radius: 8, x: 0, y: 2)
+        .onAppear {
+            haptic.prepare()
+        }
     }
     
     private var isAtTarget: Bool {
