@@ -56,9 +56,8 @@ struct GuideView: View {
     }
     
     var body: some View {
-        NavigationStack {
-            Group {
-                if project.guideSteps.isEmpty {
+        Group {
+            if project.guideSteps.isEmpty {
                     ContentUnavailableView {
                         Label("Nessuna Guida", systemImage: "sparkles")
                     } description: {
@@ -292,6 +291,22 @@ struct GuideView: View {
                 if let firstIncomplete = sortedSteps.firstIndex(where: { !$0.isCompleted }) {
                     currentStepIndex = firstIncomplete
                 }
+                if currentStepIndex < sortedSteps.count {
+                    WatchConnectivityIOSManager.shared.setActiveStep(sortedSteps[currentStepIndex], for: project)
+                }
+            }
+            .onChange(of: currentStepIndex) { _, newIndex in
+                if newIndex < sortedSteps.count {
+                    WatchConnectivityIOSManager.shared.setActiveStep(sortedSteps[newIndex], for: project)
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .watchDidChangeActiveStep)) { notification in
+                if let targetStepId = notification.userInfo?["stepId"] as? UUID,
+                   let idx = sortedSteps.firstIndex(where: { $0.id == targetStepId }) {
+                    withAnimation(.easeInOut(duration: 0.25)) {
+                        currentStepIndex = idx
+                    }
+                }
             }
             .sheet(isPresented: $showingAddStepSheet) {
                 AddGuideStepSheet(project: project)
@@ -330,7 +345,6 @@ struct GuideView: View {
             } message: {
                 Text(errorMessage ?? "")
             }
-        }
     }
     
     // MARK: - Fine Guida
@@ -952,9 +966,15 @@ struct CardCounterBoxView: View {
                 }
                 Spacer()
                 if step.currentStepCount > 0 {
-                    Button("Azzera") { step.currentStepCount = 0 }
-                        .font(.caption.bold())
-                        .foregroundColor(.red)
+                    Button("Azzera") {
+                        step.currentStepCount = 0
+                        if let global = step.project?.counters.first(where: { $0.title.localizedCaseInsensitiveContains("globale") || $0.title.localizedCaseInsensitiveContains("totale") }) {
+                            global.currentCount = step.project?.totalGuideRowsWorked ?? 0
+                        }
+                        WatchConnectivityIOSManager.shared.syncAllProjectsToWatch()
+                    }
+                    .font(.caption.bold())
+                    .foregroundColor(.red)
                 }
             }
             
@@ -968,7 +988,13 @@ struct CardCounterBoxView: View {
                 Button {
                     TimerManager.shared.registerInteraction()
                     haptic.impactOccurred()
-                    if step.currentStepCount > 0 { step.currentStepCount -= 1 }
+                    if step.currentStepCount > 0 {
+                        step.currentStepCount -= 1
+                        if let global = step.project?.counters.first(where: { $0.title.localizedCaseInsensitiveContains("globale") || $0.title.localizedCaseInsensitiveContains("totale") }) {
+                            global.currentCount = step.project?.totalGuideRowsWorked ?? 0
+                        }
+                        WatchConnectivityIOSManager.shared.syncAllProjectsToWatch()
+                    }
                 } label: {
                     Image(systemName: "minus")
                         .font(.title3.bold())
@@ -999,6 +1025,9 @@ struct CardCounterBoxView: View {
                     TimerManager.shared.registerInteraction()
                     haptic.impactOccurred()
                     step.currentStepCount += 1
+                    if let global = step.project?.counters.first(where: { $0.title.localizedCaseInsensitiveContains("globale") || $0.title.localizedCaseInsensitiveContains("totale") }) {
+                        global.currentCount = step.project?.totalGuideRowsWorked ?? 0
+                    }
                     WatchConnectivityIOSManager.shared.syncAllProjectsToWatch()
                     if isTargetReached { successHaptic.notificationOccurred(.success) }
                 } label: {

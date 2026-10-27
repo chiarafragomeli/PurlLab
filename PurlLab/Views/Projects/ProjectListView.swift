@@ -14,10 +14,11 @@ struct ProjectListView: View {
     @State private var projectToRename: KnittingProject?
     @State private var renameTitle = ""
     @State private var showingRenameAlert = false
+    @State private var navigationPath: [UUID] = []
     @AppStorage("didAutoLoadSampleV4") private var didAutoLoadSampleV4 = false
     
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $navigationPath) {
             Group {
                 if projects.isEmpty {
                     ContentUnavailableView {
@@ -49,7 +50,7 @@ struct ProjectListView: View {
                 } else {
                     List {
                         ForEach(projects) { project in
-                            NavigationLink(destination: ProjectDetailView(project: project)) {
+                            NavigationLink(value: project.id) {
                                 ProjectRowView(project: project)
                             }
                             .swipeActions(edge: .leading) {
@@ -85,7 +86,24 @@ struct ProjectListView: View {
                 }
             }
             .navigationTitle("I Miei Progetti")
+            .navigationDestination(for: UUID.self) { projectId in
+                if let project = projects.first(where: { $0.id == projectId }) {
+                    ProjectDetailView(project: project)
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .watchDidSelectProject)) { notification in
+                if let projectId = notification.userInfo?["projectId"] as? UUID {
+                    navigationPath = [projectId]
+                }
+            }
+            .task {
+                try? await Task.sleep(nanoseconds: 250_000_000)
+                if let activeId = WatchConnectivityIOSManager.shared.activeProjectId ?? projects.first?.id {
+                    navigationPath = [activeId]
+                }
+            }
             .onAppear {
+                
                 // Rimuovi eventuali vecchi contatori del raglan dalla scheda contatori
                 for project in projects {
                     let raglanCounters = project.counters.filter { $0.title.localizedCaseInsensitiveContains("raglan") }

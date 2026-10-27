@@ -9,16 +9,31 @@ struct WatchProjectSummary: Codable, Identifiable, Sendable {
     var totalSecondsWorked: TimeInterval
     var isTimerRunning: Bool
     
-    // Stato della guida operativa corrente
+    // Scheda e Sezione Operativa Attualmente Lavorata
+    var activeStepId: String?
     var currentSectionTitle: String
     var currentStepTitle: String
     var currentStepIndex: Int
     var totalStepsCount: Int
+    var isStepCompleted: Bool
     
-    // Contatore principale
+    // Contatore specifico della sezione
     var counterLabel: String
     var currentCount: Int
     var targetCount: Int?
+    
+    // Maglie attuali sul ferro per questa sezione
+    var currentStitches: Int?
+    var stitchesBefore: Int?
+    var stitchesAfter: Int?
+    
+    // Navigazione tra schede
+    var canGoPrevious: Bool
+    var canGoNext: Bool
+    
+    // Statistiche globali di progetto (maglie e ferri totali)
+    var totalStitchesWorked: Int
+    var totalRowsWorked: Int
     
     // Eventuali contatori aggiuntivi sulla scheda
     var extraCounterLabels: [String]
@@ -35,6 +50,18 @@ struct WatchProjectSummary: Codable, Identifiable, Sendable {
         let size = selectedSize.trimmingCharacters(in: .whitespaces)
         return size.isEmpty ? designer : (designer.isEmpty ? size : "\(size) · \(designer)")
     }
+    
+    /// Testo sintetico sulle maglie (es. "114 maglie" o "4 → 8 maglie")
+    var stitchesDescription: String? {
+        if let before = stitchesBefore, let after = stitchesAfter, before != after {
+            let diff = after - before
+            let diffStr = diff > 0 ? "+\(diff)" : "\(diff)"
+            return "\(before) → \(after) m (\(diffStr))"
+        } else if let sts = currentStitches, sts > 0 {
+            return "\(sts) maglie"
+        }
+        return nil
+    }
 }
 
 /// Contenitore di sincronizzazione trasmesso via WCSession
@@ -49,6 +76,10 @@ enum WatchCommandType: String, Codable {
     case incrementMainCounter
     case decrementMainCounter
     case setMainCounter
+    case nextStep
+    case previousStep
+    case completeStep
+    case selectStep
     case incrementExtraCounter
     case decrementExtraCounter
     case startTimer

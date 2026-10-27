@@ -13,7 +13,7 @@ final class WatchConnectivityManager: NSObject, WCSessionDelegate {
     var isConnectedToPhone: Bool = false
     var lastSyncDate: Date? = nil
     
-    private let userDefaultsKey = "purl_lab_watch_cache_v1"
+    private let userDefaultsKey = "purl_lab_watch_cache_v2"
     
     var activeProject: WatchProjectSummary? {
         if let id = activeProjectId {
@@ -38,10 +38,14 @@ final class WatchConnectivityManager: NSObject, WCSessionDelegate {
     
     // MARK: - Azioni Utente (Apple Watch -> iPhone)
     
-    /// Incrementa il contatore principale (+1) con risposta aptica istantanea
+    /// Incrementa il contatore della sezione (+1) con risposta aptica istantanea
     func incrementMainCounter() {
         guard var current = activeProject else { return }
         current.currentCount += 1
+        current.totalRowsWorked += 1
+        if let sts = current.currentStitches, sts > 0 {
+            current.totalStitchesWorked += sts
+        }
         updateProjectLocally(current)
         
         // Haptic click piacevole per ogni ferro
@@ -51,25 +55,28 @@ final class WatchConnectivityManager: NSObject, WCSessionDelegate {
             WKInterfaceDevice.current().play(.click)
         }
         
-        sendCommand(
-            .incrementMainCounter,
-            projectId: current.id,
-            data: ["newCount": current.currentCount]
-        )
+        var payload: [String: Any] = ["newCount": current.currentCount]
+        if let stepId = current.activeStepId {
+            payload["stepId"] = stepId
+        }
+        
+        sendCommand(.incrementMainCounter, projectId: current.id, data: payload)
     }
     
-    /// Decrementa il contatore principale (-1)
+    /// Decrementa il contatore della sezione (-1)
     func decrementMainCounter() {
         guard var current = activeProject, current.currentCount > 0 else { return }
         current.currentCount -= 1
+        if current.totalRowsWorked > 0 { current.totalRowsWorked -= 1 }
         updateProjectLocally(current)
         WKInterfaceDevice.current().play(.directionDown)
         
-        sendCommand(
-            .decrementMainCounter,
-            projectId: current.id,
-            data: ["newCount": current.currentCount]
-        )
+        var payload: [String: Any] = ["newCount": current.currentCount]
+        if let stepId = current.activeStepId {
+            payload["stepId"] = stepId
+        }
+        
+        sendCommand(.decrementMainCounter, projectId: current.id, data: payload)
     }
     
     /// Imposta direttamente un valore (es. tramite Digital Crown)
@@ -79,11 +86,39 @@ final class WatchConnectivityManager: NSObject, WCSessionDelegate {
         updateProjectLocally(current)
         WKInterfaceDevice.current().play(.click)
         
-        sendCommand(
-            .setMainCounter,
-            projectId: current.id,
-            data: ["newCount": value]
-        )
+        var payload: [String: Any] = ["newCount": value]
+        if let stepId = current.activeStepId {
+            payload["stepId"] = stepId
+        }
+        
+        sendCommand(.setMainCounter, projectId: current.id, data: payload)
+    }
+    
+    /// Passa alla scheda/sezione successiva della guida
+    func nextStep() {
+        guard let current = activeProject, current.canGoNext else { return }
+        WKInterfaceDevice.current().play(.click)
+        var payload: [String: Any] = [:]
+        if let stepId = current.activeStepId { payload["stepId"] = stepId }
+        sendCommand(.nextStep, projectId: current.id, data: payload)
+    }
+    
+    /// Torna alla scheda/sezione precedente della guida
+    func previousStep() {
+        guard let current = activeProject, current.canGoPrevious else { return }
+        WKInterfaceDevice.current().play(.click)
+        var payload: [String: Any] = [:]
+        if let stepId = current.activeStepId { payload["stepId"] = stepId }
+        sendCommand(.previousStep, projectId: current.id, data: payload)
+    }
+    
+    /// Segna la scheda corrente come completata e avanza alla successiva
+    func completeStep() {
+        guard let current = activeProject else { return }
+        WKInterfaceDevice.current().play(.success)
+        var payload: [String: Any] = [:]
+        if let stepId = current.activeStepId { payload["stepId"] = stepId }
+        sendCommand(.completeStep, projectId: current.id, data: payload)
     }
     
     /// Toggle Timer Sessione (Play / Pausa) sincronizzato con iPhone
@@ -203,6 +238,9 @@ final class WatchConnectivityManager: NSObject, WCSessionDelegate {
         let isReachable = session.isReachable
         Task { @MainActor in
             self.isConnectedToPhone = isReachable
+            if isReachable {
+                self.requestSyncFromPhone()
+            }
         }
     }
     
