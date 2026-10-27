@@ -8,7 +8,7 @@ struct CountersView: View {
     
     // Scheda operativa attiva (sincronizzata con Apple Watch e Guida)
     private var activeStep: GuideStep? {
-        project.activeWorkingStep()
+        project.activeWorkingStep(preferredStepId: WatchConnectivityIOSManager.shared.activeStepId)
     }
     
     var body: some View {

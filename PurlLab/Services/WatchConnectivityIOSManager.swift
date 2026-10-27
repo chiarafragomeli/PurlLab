@@ -15,7 +15,19 @@ final class WatchConnectivityIOSManager: NSObject, WCSessionDelegate {
     
     private var modelContext: ModelContext?
     public private(set) var activeProjectId: UUID?
-    public private(set) var activeStepId: UUID?
+    private var activeStepIdsByProject: [UUID: UUID] = [:]
+    
+    public var activeStepId: UUID? {
+        get {
+            guard let projId = activeProjectId else { return nil }
+            return activeStepIdsByProject[projId]
+        }
+        set {
+            if let projId = activeProjectId {
+                activeStepIdsByProject[projId] = newValue
+            }
+        }
+    }
     
     override private init() {
         super.init()
@@ -29,18 +41,34 @@ final class WatchConnectivityIOSManager: NSObject, WCSessionDelegate {
     }
     
     func setActiveProject(_ project: KnittingProject?) {
-        self.activeProjectId = project?.id
-        // Resetta lo stepId se cambia progetto
-        self.activeStepId = project?.activeWorkingStep()?.id
+        guard let project = project else {
+            self.activeProjectId = nil
+            syncAllProjectsToWatch()
+            return
+        }
+        
+        self.activeProjectId = project.id
+        
+        // Se non abbiamo ancora uno step memorizzato per questo progetto (o se non è più valido),
+        // calcola lo step di lavoro iniziale. Altrimenti mantieni rigorosamente quello esistente!
+        if let currentStepId = activeStepIdsByProject[project.id],
+           project.guideSteps.contains(where: { $0.id == currentStepId }) {
+            // Mantiene lo step intatto per Apple Watch senza sovrascriverlo durante la navigazione
+        } else {
+            activeStepIdsByProject[project.id] = project.activeWorkingStep()?.id
+        }
+        
         syncAllProjectsToWatch()
     }
     
-    /// Imposta la scheda operativa attualmente visualizzata o lavorata dall'utente in GuideView
+    /// Imposta la scheda operativa specificamente per il lavoro con Apple Watch
     func setActiveStep(_ step: GuideStep?, for project: KnittingProject?) {
         if let project = project {
             self.activeProjectId = project.id
+            activeStepIdsByProject[project.id] = step?.id
+        } else if let activeProjId = self.activeProjectId {
+            activeStepIdsByProject[activeProjId] = step?.id
         }
-        self.activeStepId = step?.id
         syncAllProjectsToWatch()
     }
     
@@ -88,7 +116,7 @@ final class WatchConnectivityIOSManager: NSObject, WCSessionDelegate {
     /// Costruisce il sommario per Apple Watch con la sezione attiva sensata
     private func buildProjectSummary(for p: KnittingProject) -> WatchProjectSummary {
         let sortedSteps = p.guideSteps.sorted(by: { $0.orderIndex < $1.orderIndex })
-        let preferredStepId = (p.id == self.activeProjectId ? self.activeStepId : nil)
+        let preferredStepId = activeStepIdsByProject[p.id]
         let activeStep = p.activeWorkingStep(preferredStepId: preferredStepId)
         let activeStepIdx = activeStep.flatMap { step in sortedSteps.firstIndex(where: { $0.id == step.id }) } ?? 0
         
@@ -296,7 +324,9 @@ final class WatchConnectivityIOSManager: NSObject, WCSessionDelegate {
         case .selectProject, .requestFullSync:
             self.activeProjectId = project.id
             if command == .selectProject {
-                self.activeStepId = project.activeWorkingStep()?.id
+                if activeStepIdsByProject[project.id] == nil || !project.guideSteps.contains(where: { $0.id == activeStepIdsByProject[project.id] }) {
+                    activeStepIdsByProject[project.id] = project.activeWorkingStep()?.id
+                }
             }
             NotificationCenter.default.post(
                 name: .watchDidSelectProject,

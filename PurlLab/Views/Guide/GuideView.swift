@@ -8,12 +8,12 @@ enum GuideDisplayMode: String, CaseIterable {
 
 struct GuideView: View {
     @Bindable var project: KnittingProject
+    @Binding var currentStepIndex: Int
     @Environment(\.modelContext) private var modelContext
     var onSelectPdfPage: (Int) -> Void
     var onExitProject: () -> Void = {}
     
     @State private var displayMode: GuideDisplayMode = .card
-    @State private var currentStepIndex: Int = 0
     @State private var showingGenerateSheet = false
     @State private var showingAddStepSheet = false
     @State private var showingGaugeSheet = false
@@ -166,6 +166,7 @@ struct GuideView: View {
                                 steps: sortedSteps,
                                 orderedSections: orderedSections,
                                 currentIndex: $currentStepIndex,
+                                project: project,
                                 onNavigateToPage: onSelectPdfPage,
                                 onDeleteStep: { step in
                                     deleteStep(step)
@@ -288,19 +289,25 @@ struct GuideView: View {
                 }
             }
             .onAppear {
-                if let active = project.activeWorkingStep(),
-                   let idx = sortedSteps.firstIndex(where: { $0.id == active.id }) {
-                    currentStepIndex = idx
-                } else if let firstIncomplete = sortedSteps.firstIndex(where: { !$0.isCompleted }) {
-                    currentStepIndex = firstIncomplete
-                }
-                if currentStepIndex < sortedSteps.count {
-                    WatchConnectivityIOSManager.shared.setActiveStep(sortedSteps[currentStepIndex], for: project)
+                if !sortedSteps.isEmpty {
+                    if currentStepIndex < 0 || currentStepIndex >= sortedSteps.count {
+                        let savedIdx = UserDefaults.standard.object(forKey: "purl_lab_last_guide_step_\(project.id)") as? Int
+                        if let saved = savedIdx, saved >= 0 && saved < sortedSteps.count {
+                            currentStepIndex = saved
+                        } else if let active = project.activeWorkingStep(),
+                                  let idx = sortedSteps.firstIndex(where: { $0.id == active.id }) {
+                            currentStepIndex = idx
+                        } else if let firstIncomplete = sortedSteps.firstIndex(where: { !$0.isCompleted }) {
+                            currentStepIndex = firstIncomplete
+                        } else {
+                            currentStepIndex = 0
+                        }
+                    }
                 }
             }
             .onChange(of: currentStepIndex) { _, newIndex in
-                if newIndex < sortedSteps.count {
-                    WatchConnectivityIOSManager.shared.setActiveStep(sortedSteps[newIndex], for: project)
+                if newIndex >= 0 && newIndex < sortedSteps.count {
+                    UserDefaults.standard.set(newIndex, forKey: "purl_lab_last_guide_step_\(project.id)")
                 }
             }
             .onReceive(NotificationCenter.default.publisher(for: .watchDidChangeActiveStep)) { notification in
@@ -449,6 +456,7 @@ struct GuideSingleCardView: View {
     let steps: [GuideStep]
     let orderedSections: [GuideView.SectionGroup]
     @Binding var currentIndex: Int
+    var project: KnittingProject? = nil
     var onNavigateToPage: (Int) -> Void
     var onDeleteStep: (GuideStep) -> Void
     var onFinishGuide: () -> Void = {}
@@ -568,6 +576,39 @@ struct GuideSingleCardView: View {
                             }
                             
                             Spacer()
+                            
+                            let isWatchActive = (WatchConnectivityIOSManager.shared.activeStepId == step.id)
+                            if isWatchActive {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "applewatch")
+                                    Text("Attiva su Watch")
+                                }
+                                .font(.caption2.bold())
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 5)
+                                .background(Color.green.opacity(0.15))
+                                .foregroundColor(.green)
+                                .clipShape(Capsule())
+                            } else if step.hasCounter || (step.targetStepCount != nil && step.targetStepCount! > 0) {
+                                Button {
+                                    let targetProject = project ?? step.project
+                                    WatchConnectivityIOSManager.shared.setActiveStep(step, for: targetProject)
+                                    let gen = UIImpactFeedbackGenerator(style: .medium)
+                                    gen.impactOccurred()
+                                } label: {
+                                    HStack(spacing: 4) {
+                                        Image(systemName: "applewatch")
+                                        Text("Lavora su Watch")
+                                    }
+                                    .font(.caption2.bold())
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 5)
+                                    .background(Color(.systemGray5))
+                                    .foregroundColor(.secondary)
+                                    .clipShape(Capsule())
+                                }
+                                .buttonStyle(.plain)
+                            }
                             
                             if step.isCompleted {
                                 Menu {
@@ -812,6 +853,17 @@ struct GuideSingleCardView: View {
                         }
                         step.isCompleted = true
                         step.completedAt = Date()
+                        
+                        let targetProject = project ?? step.project
+                        if WatchConnectivityIOSManager.shared.activeStepId == step.id {
+                            if !isLast {
+                                let nextStep = steps[currentIndex + 1]
+                                WatchConnectivityIOSManager.shared.setActiveStep(nextStep, for: targetProject)
+                            }
+                        } else {
+                            WatchConnectivityIOSManager.shared.syncAllProjectsToWatch()
+                        }
+                        
                         if !isLast {
                             withAnimation(.easeInOut(duration: 0.25)) { currentIndex += 1 }
                         } else {

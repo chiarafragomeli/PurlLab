@@ -187,4 +187,36 @@ final class KnittingProjectTests: XCTestCase {
         }
         XCTAssertEqual(preferred.id, step3.id)
     }
+    
+    func testWatchConnectivityManagerPreservesActiveStepAcrossNavigation() {
+        let project = KnittingProject(title: "Maglione Test")
+        context.insert(project)
+        
+        let step1 = GuideStep(sectionTitle: "Collo", instructionText: "Lavora il collo", orderIndex: 0, hasCounter: true)
+        let step2 = GuideStep(sectionTitle: "Sprone", instructionText: "Lavora gli aumenti", orderIndex: 1, hasCounter: true)
+        let step3 = GuideStep(sectionTitle: "Corpo", instructionText: "Lavora il corpo", orderIndex: 2, hasCounter: true)
+        
+        step1.project = project
+        step2.project = project
+        step3.project = project
+        project.guideSteps = [step1, step2, step3]
+        
+        let manager = WatchConnectivityIOSManager.shared
+        manager.configure(with: context)
+        
+        // 1. Inizializza sul progetto
+        manager.setActiveProject(project)
+        XCTAssertEqual(manager.activeProjectId, project.id)
+        XCTAssertEqual(manager.activeStepId, step1.id)
+        
+        // 2. L'utente o Apple Watch imposta lo step 2
+        manager.setActiveStep(step2, for: project)
+        XCTAssertEqual(manager.activeStepId, step2.id)
+        
+        // 3. Navigazione nell'app (es. apre tab Contatori o rientra nella schermata)
+        manager.setActiveProject(project)
+        
+        // Deve rimanere rigorosamente su step2, senza azzerarsi a step1
+        XCTAssertEqual(manager.activeStepId, step2.id, "setActiveProject non deve sovrascrivere lo step attivo se il progetto non è cambiato")
+    }
 }

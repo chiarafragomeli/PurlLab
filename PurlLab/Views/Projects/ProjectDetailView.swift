@@ -66,6 +66,7 @@ struct ProjectDetailView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var selectedTab: DetailTab = .guide
     @State private var targetPdfPage: Int = 1
+    @State private var currentGuideStepIndex: Int = 0
     
     @State private var showingEditProject = false
     @State private var showingGaugeSheet = false
@@ -83,12 +84,17 @@ struct ProjectDetailView: View {
         VStack(spacing: 0) {
             // Tab Content
             TabView(selection: $selectedTab) {
-                GuideView(project: project, onSelectPdfPage: { page in
-                    targetPdfPage = page
-                    selectedTab = .pdf
-                }, onExitProject: {
-                    dismiss()
-                })
+                GuideView(
+                    project: project,
+                    currentStepIndex: $currentGuideStepIndex,
+                    onSelectPdfPage: { page in
+                        targetPdfPage = page
+                        selectedTab = .pdf
+                    },
+                    onExitProject: {
+                        dismiss()
+                    }
+                )
                 .tag(DetailTab.guide)
                 
                 CountersView(project: project)
@@ -184,6 +190,14 @@ struct ProjectDetailView: View {
             .presentationDetents([.medium])
         }
         .onAppear {
+            let sorted = project.guideSteps.sorted(by: { $0.orderIndex < $1.orderIndex })
+            let savedIdx = UserDefaults.standard.object(forKey: "purl_lab_last_guide_step_\(project.id)") as? Int
+            if let saved = savedIdx, saved >= 0 && saved < sorted.count {
+                currentGuideStepIndex = saved
+            } else if let active = project.activeWorkingStep(),
+                      let idx = sorted.firstIndex(where: { $0.id == active.id }) {
+                currentGuideStepIndex = idx
+            }
             WatchConnectivityIOSManager.shared.setActiveProject(project)
         }
         .onDisappear {
