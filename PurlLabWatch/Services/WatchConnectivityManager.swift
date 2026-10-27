@@ -116,7 +116,7 @@ final class WatchConnectivityManager: NSObject, WCSessionDelegate {
     }
     
     // MARK: - Invio Comandi a iPhone via WatchConnectivity
-    private func sendCommand(_ command: WatchCommandType, projectId: String, data: [String: Any]) {
+    nonisolated private func sendCommand(_ command: WatchCommandType, projectId: String, data: [String: Any]) {
         guard WCSession.isSupported() else { return }
         let session = WCSession.default
         
@@ -136,9 +136,9 @@ final class WatchConnectivityManager: NSObject, WCSessionDelegate {
                         self?.handleSyncData(syncData)
                     }
                 }
-            }, errorHandler: { _ in
+            }, errorHandler: { [message] _ in
                 // In caso di errore temporaneo, salva e invia in background
-                session.transferUserInfo(message)
+                WCSession.default.transferUserInfo(message)
             })
         } else {
             // Se iPhone è bloccato o in tasca, trasferisce in background
