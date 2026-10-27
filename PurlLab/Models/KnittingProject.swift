@@ -104,7 +104,7 @@ extension KnittingProject {
         var hasValidTargets = false
         
         for step in sorted {
-            guard let targetRows = step.targetStepCount, targetRows > 0 else { continue }
+            guard let targetRows = step.effectiveTargetCount, targetRows > 0 else { continue }
             hasValidTargets = true
             let startSts = step.stitchCountBefore ?? (lastKnownStitches > 0 ? lastKnownStitches : 0)
             let endSts = step.stitchCountAfter ?? startSts
@@ -127,7 +127,7 @@ extension KnittingProject {
     
     /// Totale dei ferri obiettivo in tutto il pattern
     var targetTotalRows: Int? {
-        let total = guideSteps.compactMap { $0.targetStepCount }.reduce(0, +)
+        let total = guideSteps.compactMap { $0.effectiveTargetCount }.reduce(0, +)
         return total > 0 ? total : nil
     }
     

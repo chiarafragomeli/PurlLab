@@ -72,4 +72,12 @@ final class GuideStep {
         self.currentStepCount = currentStepCount
         self.targetStepCount = targetStepCount
     }
+    
+    /// Calcola l'obiettivo effettivo (se pattern ripetuto moltiplica ferri × ripetizioni)
+    var effectiveTargetCount: Int? {
+        if let rows = rowsPerRepeat, let reps = totalRepeats, rows > 0, reps > 0 {
+            return rows * reps
+        }
+        return targetStepCount
+    }
 }

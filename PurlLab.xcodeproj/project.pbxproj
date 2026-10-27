@@ -7,6 +7,12 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		T00100000000000000000001 /* RowCounterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T00200000000000000000001 /* RowCounterTests.swift */; };
+		T00100000000000000000002 /* KnittingProjectTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T00200000000000000000002 /* KnittingProjectTests.swift */; };
+		T00100000000000000000003 /* GuideStepTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T00200000000000000000003 /* GuideStepTests.swift */; };
+		T00100000000000000000004 /* WatchModelsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T00200000000000000000004 /* WatchModelsTests.swift */; };
+		T00100000000000000000005 /* TimerManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T00200000000000000000005 /* TimerManagerTests.swift */; };
+		T00100000000000000000006 /* GaugeRecalculationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T00200000000000000000006 /* GaugeRecalculationTests.swift */; };
 
 		B01000000000000000000001 /* WatchConnectivityIOSManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = F01000000000000000000001 /* WatchConnectivityIOSManager.swift */; };
 		B02000000000000000000002 /* WatchModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = F02000000000000000000002 /* WatchModels.swift */; };
@@ -39,6 +45,13 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		T00200000000000000000001 /* RowCounterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "RowCounterTests.swift"; sourceTree = "<group>"; };
+		T00200000000000000000002 /* KnittingProjectTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "KnittingProjectTests.swift"; sourceTree = "<group>"; };
+		T00200000000000000000003 /* GuideStepTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "GuideStepTests.swift"; sourceTree = "<group>"; };
+		T00200000000000000000004 /* WatchModelsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "WatchModelsTests.swift"; sourceTree = "<group>"; };
+		T00200000000000000000005 /* TimerManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TimerManagerTests.swift"; sourceTree = "<group>"; };
+		T00200000000000000000006 /* GaugeRecalculationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "GaugeRecalculationTests.swift"; sourceTree = "<group>"; };
+		T00777777777777777777777 /* PurlLabTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PurlLabTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 
 		F01000000000000000000001 /* WatchConnectivityIOSManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchConnectivityIOSManager.swift; sourceTree = "<group>"; };
 		F02000000000000000000002 /* WatchModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchModels.swift; sourceTree = "<group>"; };
@@ -71,6 +84,19 @@
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
+		T06666666666666666666666 /* PurlLabTests */ = {
+			isa = PBXGroup;
+			children = (
+				T00200000000000000000001 /* RowCounterTests.swift */,
+				T00200000000000000000002 /* KnittingProjectTests.swift */,
+				T00200000000000000000003 /* GuideStepTests.swift */,
+				T00200000000000000000004 /* WatchModelsTests.swift */,
+				T00200000000000000000005 /* TimerManagerTests.swift */,
+				T00200000000000000000006 /* GaugeRecalculationTests.swift */,
+			);
+			path = PurlLabTests;
+			sourceTree = "<group>";
+		};
 
 		G01000000000000000000001 /* PurlLabWatch */ = {
 			isa = PBXGroup;
@@ -163,6 +189,7 @@
 		59DF53DDD9E6109FC265D5EE /* Products */ = {
 			isa = PBXGroup;
 			children = (
+				T00777777777777777777777 /* PurlLabTests.xctest */,
 				4CD9112FA38A149EE5D1E01F /* PurlLab.app */,
 				W07777777777777777777777 /* PurlLabWatch.app */,
 			);
@@ -228,6 +255,7 @@
 		F17F49E39D6DC093B7576CF8 = {
 			isa = PBXGroup;
 			children = (
+				T06666666666666666666666 /* PurlLabTests */,
 				0198AE8BD2341223D700D009 /* PurlLab */,
 				G01000000000000000000001 /* PurlLabWatch */,
 				59DF53DDD9E6109FC265D5EE /* Products */,
@@ -237,6 +265,24 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		T01111111111111111111111 /* PurlLabTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = T02222222222222222222222 /* Build configuration list for PBXNativeTarget "PurlLabTests" */;
+			buildPhases = (
+				T05555555555555555555555 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				T0AAAAAAAAAA111111111111 /* PBXTargetDependency */,
+			);
+			name = PurlLabTests;
+			packageProductDependencies = (
+			);
+			productName = PurlLabTests;
+			productReference = T00777777777777777777777 /* PurlLabTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 
 		W01111111111111111111111 /* PurlLabWatch */ = {
 			isa = PBXNativeTarget;
@@ -280,6 +326,13 @@
 
 
 /* Begin PBXContainerItemProxy section */
+		T0BBBBBBBBBB222222222222 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 4A8F33C884881E4FCC20A68A /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = E52C3651096872D3979F5460;
+			remoteInfo = PurlLab;
+		};
 		W0BBBBBBBBBB222222222222 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 4A8F33C884881E4FCC20A68A /* Project object */;
@@ -304,6 +357,11 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
+		T0AAAAAAAAAA111111111111 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = E52C3651096872D3979F5460 /* PurlLab */;
+			targetProxy = T0BBBBBBBBBB222222222222 /* PBXContainerItemProxy */;
+		};
 		W0AAAAAAAAAA111111111111 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = W01111111111111111111111 /* PurlLabWatch */;
@@ -318,6 +376,11 @@
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1600;
 				TargetAttributes = {
+					T01111111111111111111111 = {
+						CreatedOnToolsVersion = 16.0;
+						TestTargetID = E52C3651096872D3979F5460;
+					};
+
 				};
 			};
 			buildConfigurationList = 203CAECBF4608016D5F13075 /* Build configuration list for PBXProject "PurlLab" */;
@@ -336,6 +399,7 @@
 			targets = (
 				E52C3651096872D3979F5460 /* PurlLab */,
 				W01111111111111111111111 /* PurlLabWatch */,
+				T01111111111111111111111 /* PurlLabTests */,
 			);
 		};
 /* End PBXProject section */
@@ -354,6 +418,19 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		T05555555555555555555555 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				T00100000000000000000001 /* RowCounterTests.swift in Sources */,
+				T00100000000000000000002 /* KnittingProjectTests.swift in Sources */,
+				T00100000000000000000003 /* GuideStepTests.swift in Sources */,
+				T00100000000000000000004 /* WatchModelsTests.swift in Sources */,
+				T00100000000000000000005 /* TimerManagerTests.swift in Sources */,
+				T00100000000000000000006 /* GaugeRecalculationTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 
 		W05555555555555555555555 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
@@ -403,6 +480,44 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin XCBuildConfiguration section */
+		T03333333333333333333333 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.chiara.PurlLabTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/PurlLab.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/PurlLab";
+			};
+			name = Debug;
+		};
+		T04444444444444444444444 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.chiara.PurlLabTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/PurlLab.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/PurlLab";
+			};
+			name = Release;
+		};
 
 		W03333333333333333333333 /* Debug */ = {
 			isa = XCBuildConfiguration;
@@ -626,6 +741,15 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		T02222222222222222222222 /* Build configuration list for PBXNativeTarget "PurlLabTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				T03333333333333333333333 /* Debug */,
+				T04444444444444444444444 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
 
 		W02222222222222222222222 /* Build configuration list for PBXNativeTarget "PurlLabWatch" */ = {
 			isa = XCConfigurationList;
