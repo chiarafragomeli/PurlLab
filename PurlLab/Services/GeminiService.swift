@@ -12,6 +12,7 @@ struct GeneratedGuideResponse: Codable {
 }
 
 struct GaugeStepSnapshot: Codable, Sendable {
+    var stepId: String? = nil
     let index: Int
     let sectionTitle: String
     let title: String
@@ -57,6 +58,7 @@ struct GeneratedSection: Codable {
 }
 
 struct GeneratedStep: Codable {
+    var stepId: String? = nil
     let title: String?
     let stepType: String? // "info", "single_action", "repeat_pattern", "work_to_measure"
     let instruction: String
@@ -80,6 +82,7 @@ enum GeminiError: LocalizedError {
     case invalidURL
     case networkError(String)
     case parsingError(String)
+    case invalidInput(String)
     
     var errorDescription: String? {
         switch self {
@@ -93,6 +96,8 @@ enum GeminiError: LocalizedError {
             return "Errore di rete: \(msg)"
         case .parsingError(let msg):
             return "Errore nell'interpretazione della risposta: \(msg)"
+        case .invalidInput(let msg):
+            return "Input non valido: \(msg)"
         }
     }
 }
@@ -381,6 +386,10 @@ final class GeminiService: @unchecked Sendable {
             throw GeminiError.invalidApiKeyFormat
         }
         
+        guard patternStitches > 0, patternRows > 0, userStitches > 0, userRows > 0 else {
+            throw GeminiError.invalidInput("I valori del campione del pattern e dell'utente devono essere maggiori di zero.")
+        }
+        
         let effectiveSize = targetSize.isEmpty ? "M" : targetSize
         let stitchRatio = userStitches / patternStitches
         let rowRatio = userRows / patternRows
@@ -553,16 +562,65 @@ final class GeminiService: @unchecked Sendable {
         return !protected.contains(where: { lower.contains($0) })
     }
     
-    /// Sostituisce nei testi originali un vecchio numero con il nuovo nei contesti tipici di maglia,
-    /// lasciando intatto ogni carattere non numerico.
-    private static func replaceNumberInContext(in text: String, oldVal: Int, newVal: Int, units: [String]) -> String {
-        guard oldVal != newVal, oldVal > 0 else { return text }
-        var updated = text
-        for unit in units {
-            updated = updated.replacingOccurrences(of: "\(oldVal) \(unit)", with: "\(newVal) \(unit)")
-            updated = updated.replacingOccurrences(of: "(\(oldVal) \(unit))", with: "(\(newVal) \(unit))")
+    /// Formatta i valori numerici del gauge preservando i decimali (es. 21.5 m)
+    static func formatGaugeNumber(_ val: Double) -> String {
+        val.truncatingRemainder(dividingBy: 1) == 0 ? "\(Int(val))" : String(format: "%.1f", val)
+    }
+    
+    /// Esegue la sostituzione numerica in un'unica passata sull'intera stringa,
+    /// garantendo assenza di collisioni a cascata, rispetto dei boundary numerici (es. '4' dentro '114')
+    /// e distinzione esatta tra unità (es. 'm' vs 'mm').
+    static func replaceNumbersInText(
+        _ text: String,
+        stitchMap: [Int: Int] = [:],
+        repeatMap: [Int: Int] = [:],
+        rowMap: [Int: Int] = [:]
+    ) -> String {
+        guard !text.isEmpty, (!stitchMap.isEmpty || !repeatMap.isEmpty || !rowMap.isEmpty) else {
+            return text
         }
-        return updated
+        
+        let pattern = #"(?<![\d.,])(\d+)(?![\d.,])(\s*)(maglie\b|punti\b|ripetizioni\b|volte\b|cicli\b|ferri\b|giri\b|m\b|m\.)"#
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else {
+            return text
+        }
+        
+        let nsString = text as NSString
+        let matches = regex.matches(in: text, options: [], range: NSRange(location: 0, length: nsString.length))
+        guard !matches.isEmpty else { return text }
+        
+        let mutable = NSMutableString(string: text)
+        for match in matches.reversed() {
+            guard match.numberOfRanges >= 4 else { continue }
+            let numRange = match.range(at: 1)
+            let spacingRange = match.range(at: 2)
+            let unitRange = match.range(at: 3)
+            
+            let numStr = nsString.substring(with: numRange)
+            guard let oldVal = Int(numStr) else { continue }
+            
+            let spacing = nsString.substring(with: spacingRange)
+            let unitStr = nsString.substring(with: unitRange)
+            let unitLower = unitStr.lowercased()
+            
+            let targetNewVal: Int?
+            if ["maglie", "punti", "m", "m."].contains(unitLower) {
+                targetNewVal = stitchMap[oldVal] ?? rowMap[oldVal]
+            } else if ["volte", "ripetizioni", "cicli"].contains(unitLower) {
+                targetNewVal = repeatMap[oldVal]
+            } else if ["ferri", "giri"].contains(unitLower) {
+                targetNewVal = rowMap[oldVal]
+            } else {
+                targetNewVal = nil
+            }
+            
+            if let newVal = targetNewVal, newVal != oldVal {
+                let replacement = "\(newVal)\(spacing)\(unitStr)"
+                mutable.replaceCharacters(in: match.range, with: replacement)
+            }
+        }
+        
+        return mutable as String
     }
     
     /// Applica la patch numerica ai testi ORIGINALI dei passaggi: i testi non vengono mai riscritti dall'AI,
@@ -622,40 +680,31 @@ final class GeminiService: @unchecked Sendable {
                 newTarget = r * rpr
             }
             
-            // 3. Allineamento automatico dei numeri nei testi qualora un valore numerico sia cambiato
-            let stitchUnits = ["maglie", "m", "m.", "punti"]
-            let repeatUnits = ["volte", "ripetizioni", "cicli"]
-            let rowUnits = ["ferri", "giri"]
-            
+            // 3. Allineamento automatico dei numeri nei testi in unica passata sicura
+            var stitchMap: [Int: Int] = [:]
             if let oldB = snap.stitchCountBefore, let recB = newBefore, oldB != recB {
-                title = replaceNumberInContext(in: title, oldVal: oldB, newVal: recB, units: stitchUnits)
-                instruction = replaceNumberInContext(in: instruction, oldVal: oldB, newVal: recB, units: stitchUnits)
-                subSteps = subSteps.map { replaceNumberInContext(in: $0, oldVal: oldB, newVal: recB, units: stitchUnits) }
-                variations = variations.map { replaceNumberInContext(in: $0, oldVal: oldB, newVal: recB, units: stitchUnits) }
+                stitchMap[oldB] = recB
             }
             if let oldA = snap.stitchCountAfter, let recA = newAfter, oldA != recA {
-                title = replaceNumberInContext(in: title, oldVal: oldA, newVal: recA, units: stitchUnits)
-                instruction = replaceNumberInContext(in: instruction, oldVal: oldA, newVal: recA, units: stitchUnits)
-                subSteps = subSteps.map { replaceNumberInContext(in: $0, oldVal: oldA, newVal: recA, units: stitchUnits) }
-                variations = variations.map { replaceNumberInContext(in: $0, oldVal: oldA, newVal: recA, units: stitchUnits) }
+                stitchMap[oldA] = recA
             }
+            
+            var repeatMap: [Int: Int] = [:]
             if let oldR = snap.totalRepeats, let recR = newRepeats, oldR != recR {
-                title = replaceNumberInContext(in: title, oldVal: oldR, newVal: recR, units: repeatUnits)
-                instruction = replaceNumberInContext(in: instruction, oldVal: oldR, newVal: recR, units: repeatUnits)
-                subSteps = subSteps.map { replaceNumberInContext(in: $0, oldVal: oldR, newVal: recR, units: repeatUnits) }
-                variations = variations.map { replaceNumberInContext(in: $0, oldVal: oldR, newVal: recR, units: repeatUnits) }
-                if let lbl = counterLabel {
-                    counterLabel = replaceNumberInContext(in: lbl, oldVal: oldR, newVal: recR, units: repeatUnits)
-                }
+                repeatMap[oldR] = recR
             }
+            
+            var rowMap: [Int: Int] = [:]
             if let oldT = snap.targetStepCount, let recT = newTarget, oldT != recT {
-                title = replaceNumberInContext(in: title, oldVal: oldT, newVal: recT, units: rowUnits + stitchUnits)
-                instruction = replaceNumberInContext(in: instruction, oldVal: oldT, newVal: recT, units: rowUnits + stitchUnits)
-                subSteps = subSteps.map { replaceNumberInContext(in: $0, oldVal: oldT, newVal: recT, units: rowUnits + stitchUnits) }
-                variations = variations.map { replaceNumberInContext(in: $0, oldVal: oldT, newVal: recT, units: rowUnits + stitchUnits) }
-                if let lbl = counterLabel {
-                    counterLabel = replaceNumberInContext(in: lbl, oldVal: oldT, newVal: recT, units: rowUnits + stitchUnits)
-                }
+                rowMap[oldT] = recT
+            }
+            
+            title = replaceNumbersInText(title, stitchMap: stitchMap, repeatMap: repeatMap, rowMap: rowMap)
+            instruction = replaceNumbersInText(instruction, stitchMap: stitchMap, repeatMap: repeatMap, rowMap: rowMap)
+            subSteps = subSteps.map { replaceNumbersInText($0, stitchMap: stitchMap, repeatMap: repeatMap, rowMap: rowMap) }
+            variations = variations.map { replaceNumbersInText($0, stitchMap: stitchMap, repeatMap: repeatMap, rowMap: rowMap) }
+            if let lbl = counterLabel {
+                counterLabel = replaceNumbersInText(lbl, stitchMap: stitchMap, repeatMap: repeatMap, rowMap: rowMap)
             }
             
             if newBefore != snap.stitchCountBefore || newAfter != snap.stitchCountAfter
@@ -668,6 +717,7 @@ final class GeminiService: @unchecked Sendable {
             }
             
             let genStep = GeneratedStep(
+                stepId: snap.stepId,
                 title: title,
                 stepType: snap.stepType,
                 instruction: instruction,
@@ -703,7 +753,7 @@ final class GeminiService: @unchecked Sendable {
             patternTitle: patternTitle,
             designer: designer,
             targetSize: targetSize,
-            gauge: "\(Int(userStitches)) maglie × \(Int(userRows)) ferri = 10 × 10 cm (Campione Utente)",
+            gauge: "\(formatGaugeNumber(userStitches)) maglie × \(formatGaugeNumber(userRows)) ferri = 10 × 10 cm (Campione Utente)",
             needles: nil,
             recalculationSummary: summary,
             changedStepTitles: changeLog,
@@ -719,7 +769,11 @@ final class GeminiService: @unchecked Sendable {
         patternRows: Double,
         userStitches: Double,
         userRows: Double
-    ) -> GeneratedGuideResponse {
+    ) -> GeneratedGuideResponse? {
+        guard patternStitches > 0, patternRows > 0, userStitches > 0, userRows > 0 else {
+            return nil
+        }
+        
         let stitchRatio = userStitches / patternStitches
         let rowRatio = userRows / patternRows
         
@@ -737,9 +791,10 @@ final class GeminiService: @unchecked Sendable {
         
         var generatedSections: [GeneratedSection] = []
         var changedTitles: [String] = []
-        let stitchUnits = ["maglie", "m", "m.", "punti"]
-        let repeatUnits = ["volte", "ripetizioni", "cicli"]
-        let rowUnits = ["ferri", "giri"]
+        
+        // Riconciliazione topologica catena maglie: stitchCountBefore(n+1) = stitchCountAfter(n) quando collegati
+        var previousCalculatedAfter: Int? = nil
+        var previousOriginalAfter: Int? = nil
         
         for secTitle in sectionOrder {
             let steps = sectionMap[secTitle] ?? []
@@ -756,16 +811,33 @@ final class GeminiService: @unchecked Sendable {
                 var newVariations = step.repeatVariations
                 var newCounterLabel = step.counterLabel
                 
-                // Ricalcola maglie
+                // Ricalcola maglie con continuità verificata
                 if let b = step.stitchCountBefore, b > 0 {
-                    newBefore = max(1, Int(round(Double(b) * stitchRatio)))
+                    if let prevOrig = previousOriginalAfter, let prevCalc = previousCalculatedAfter, b == prevOrig {
+                        newBefore = prevCalc
+                    } else {
+                        var recalculatedB = max(1, Int(round(Double(b) * stitchRatio)))
+                        if step.sectionTitle.localizedCaseInsensitiveContains("Collo") || step.title.localizedCaseInsensitiveContains("Avvio") {
+                            if recalculatedB % 2 != 0 { recalculatedB += 1 }
+                        }
+                        newBefore = recalculatedB
+                    }
                 }
                 if let a = step.stitchCountAfter, a > 0 {
-                    var recalculatedA = max(1, Int(round(Double(a) * stitchRatio)))
-                    if step.sectionTitle.localizedCaseInsensitiveContains("Collo") || step.title.localizedCaseInsensitiveContains("Avvio") {
-                        if recalculatedA % 2 != 0 { recalculatedA += 1 }
+                    if let b = step.stitchCountBefore, b == a, let nb = newBefore {
+                        newAfter = nb
+                    } else {
+                        var recalculatedA = max(1, Int(round(Double(a) * stitchRatio)))
+                        if step.sectionTitle.localizedCaseInsensitiveContains("Collo") || step.title.localizedCaseInsensitiveContains("Avvio") {
+                            if recalculatedA % 2 != 0 { recalculatedA += 1 }
+                        }
+                        newAfter = recalculatedA
                     }
-                    newAfter = recalculatedA
+                }
+                
+                if step.stitchCountAfter != nil {
+                    previousOriginalAfter = step.stitchCountAfter
+                    previousCalculatedAfter = newAfter
                 }
                 
                 // Ricalcola ferri / ripetizioni
@@ -796,36 +868,31 @@ final class GeminiService: @unchecked Sendable {
                     }
                 }
                 
-                // Aggiorna esclusivamente i numeri nei testi originali (titolo, istruzione, sotto-passaggi, variazioni, contatore)
+                // Aggiorna i testi in un'unica passata sicura con regex (zero collisioni a cascata)
+                var stitchMap: [Int: Int] = [:]
                 if let oldB = step.stitchCountBefore, let recB = newBefore, oldB != recB {
-                    newTitle = replaceNumberInContext(in: newTitle, oldVal: oldB, newVal: recB, units: stitchUnits)
-                    newInstruction = replaceNumberInContext(in: newInstruction, oldVal: oldB, newVal: recB, units: stitchUnits)
-                    newSubSteps = newSubSteps.map { replaceNumberInContext(in: $0, oldVal: oldB, newVal: recB, units: stitchUnits) }
-                    newVariations = newVariations.map { replaceNumberInContext(in: $0, oldVal: oldB, newVal: recB, units: stitchUnits) }
+                    stitchMap[oldB] = recB
                 }
                 if let oldA = step.stitchCountAfter, let recA = newAfter, oldA != recA {
-                    newTitle = replaceNumberInContext(in: newTitle, oldVal: oldA, newVal: recA, units: stitchUnits)
-                    newInstruction = replaceNumberInContext(in: newInstruction, oldVal: oldA, newVal: recA, units: stitchUnits)
-                    newSubSteps = newSubSteps.map { replaceNumberInContext(in: $0, oldVal: oldA, newVal: recA, units: stitchUnits) }
-                    newVariations = newVariations.map { replaceNumberInContext(in: $0, oldVal: oldA, newVal: recA, units: stitchUnits) }
+                    stitchMap[oldA] = recA
                 }
+                
+                var repeatMap: [Int: Int] = [:]
                 if let oldR = step.totalRepeats, let recR = newTotalRepeats, oldR != recR {
-                    newTitle = replaceNumberInContext(in: newTitle, oldVal: oldR, newVal: recR, units: repeatUnits)
-                    newInstruction = replaceNumberInContext(in: newInstruction, oldVal: oldR, newVal: recR, units: repeatUnits)
-                    newSubSteps = newSubSteps.map { replaceNumberInContext(in: $0, oldVal: oldR, newVal: recR, units: repeatUnits) }
-                    newVariations = newVariations.map { replaceNumberInContext(in: $0, oldVal: oldR, newVal: recR, units: repeatUnits) }
-                    if let lbl = newCounterLabel {
-                        newCounterLabel = replaceNumberInContext(in: lbl, oldVal: oldR, newVal: recR, units: repeatUnits)
-                    }
+                    repeatMap[oldR] = recR
                 }
+                
+                var rowMap: [Int: Int] = [:]
                 if let oldT = step.targetStepCount, let recT = newTargetStepCount, oldT != recT {
-                    newTitle = replaceNumberInContext(in: newTitle, oldVal: oldT, newVal: recT, units: rowUnits + stitchUnits)
-                    newInstruction = replaceNumberInContext(in: newInstruction, oldVal: oldT, newVal: recT, units: rowUnits + stitchUnits)
-                    newSubSteps = newSubSteps.map { replaceNumberInContext(in: $0, oldVal: oldT, newVal: recT, units: rowUnits + stitchUnits) }
-                    newVariations = newVariations.map { replaceNumberInContext(in: $0, oldVal: oldT, newVal: recT, units: rowUnits + stitchUnits) }
-                    if let lbl = newCounterLabel {
-                        newCounterLabel = replaceNumberInContext(in: lbl, oldVal: oldT, newVal: recT, units: rowUnits + stitchUnits)
-                    }
+                    rowMap[oldT] = recT
+                }
+                
+                newTitle = replaceNumbersInText(newTitle, stitchMap: stitchMap, repeatMap: repeatMap, rowMap: rowMap)
+                newInstruction = replaceNumbersInText(newInstruction, stitchMap: stitchMap, repeatMap: repeatMap, rowMap: rowMap)
+                newSubSteps = newSubSteps.map { replaceNumbersInText($0, stitchMap: stitchMap, repeatMap: repeatMap, rowMap: rowMap) }
+                newVariations = newVariations.map { replaceNumbersInText($0, stitchMap: stitchMap, repeatMap: repeatMap, rowMap: rowMap) }
+                if let lbl = newCounterLabel {
+                    newCounterLabel = replaceNumbersInText(lbl, stitchMap: stitchMap, repeatMap: repeatMap, rowMap: rowMap)
                 }
                 
                 if newBefore != step.stitchCountBefore || newAfter != step.stitchCountAfter
@@ -834,6 +901,7 @@ final class GeminiService: @unchecked Sendable {
                 }
                 
                 let genStep = GeneratedStep(
+                    stepId: step.id.uuidString,
                     title: newTitle,
                     stepType: step.stepType,
                     instruction: newInstruction,
@@ -858,13 +926,17 @@ final class GeminiService: @unchecked Sendable {
         
         let stitchPct = String(format: "%+.1f%%", (stitchRatio - 1.0) * 100)
         let rowPct = String(format: "%+.1f%%", (rowRatio - 1.0) * 100)
-        let summary = "Ricalcolo Matematico Locale: Campione adattato da \(Int(patternStitches)) m × \(Int(patternRows)) f a \(Int(userStitches)) m × \(Int(userRows)) f per 10 cm (Maglie: \(stitchPct), Ferri: \(rowPct)). Testi originali intatti: aggiornati solo i numeri in \(changedTitles.count) schede."
+        let patStsStr = formatGaugeNumber(patternStitches)
+        let patRowsStr = formatGaugeNumber(patternRows)
+        let userStsStr = formatGaugeNumber(userStitches)
+        let userRowsStr = formatGaugeNumber(userRows)
+        let summary = "Ricalcolo Matematico Locale: Campione adattato da \(patStsStr) m × \(patRowsStr) f a \(userStsStr) m × \(userRowsStr) f per 10 cm (Maglie: \(stitchPct), Ferri: \(rowPct)). Testi originali intatti: aggiornati solo i numeri in \(changedTitles.count) schede."
         
         return GeneratedGuideResponse(
             patternTitle: project.title,
             designer: project.designer,
             targetSize: project.selectedSize,
-            gauge: "\(Int(userStitches)) maglie × \(Int(userRows)) ferri = 10 × 10 cm (Campione Utente)",
+            gauge: "\(userStsStr) maglie × \(userRowsStr) ferri = 10 × 10 cm (Campione Utente)",
             needles: nil,
             recalculationSummary: summary,
             changedStepTitles: changedTitles,

@@ -429,6 +429,7 @@ struct GaugeRecalculationView: View {
         let sorted = project.guideSteps.sorted(by: { $0.orderIndex < $1.orderIndex })
         let snapshots: [GaugeStepSnapshot] = sorted.enumerated().map { idx, step in
             GaugeStepSnapshot(
+                stepId: step.id.uuidString,
                 index: idx,
                 sectionTitle: step.sectionTitle,
                 title: step.title,
@@ -484,123 +485,52 @@ struct GaugeRecalculationView: View {
     
     private func runLocalRecalculation() {
         haptic.impactOccurred()
-        let result = GeminiService.recalculateGuideLocally(
+        guard let result = GeminiService.recalculateGuideLocally(
             project: project,
             patternStitches: patternStitches,
             patternRows: patternRows,
             userStitches: userStitches,
             userRows: userRows
-        )
+        ) else {
+            self.errorMessage = "Campione non valido: i valori del campione devono essere maggiori di zero."
+            self.showingErrorAlert = true
+            return
+        }
         self.recalculationResult = result
         self.successHaptic.notificationOccurred(.success)
     }
     
     // MARK: - Applicazione al Progetto
     private func applyRecalculatedGuide(_ result: GeneratedGuideResponse) {
-        haptic.impactOccurred()
-        
-        // Salva i parametri del campione nel progetto
-        project.patternGaugeStitches = patternStitches
-        project.patternGaugeRows = patternRows
-        project.userGaugeStitches = userStitches
-        project.userGaugeRows = userRows
-        project.isGaugeRecalculated = true
-        project.gaugeRecalculationSummary = result.recalculationSummary
-        project.updatedAt = Date()
-        
-        // Rimuove i vecchi step
-        for oldStep in project.guideSteps {
-            modelContext.delete(oldStep)
+        do {
+            try GaugeGuideManager.applyRecalculatedGuide(to: project, result: result, modelContext: modelContext)
+            project.patternGaugeStitches = patternStitches
+            project.patternGaugeRows = patternRows
+            project.userGaugeStitches = userStitches
+            project.userGaugeRows = userRows
+            try? modelContext.save()
+            WatchConnectivityIOSManager.shared.syncAllProjectsToWatch()
+            haptic.impactOccurred()
+            successHaptic.notificationOccurred(.success)
+            dismiss()
+        } catch {
+            errorMessage = error.localizedDescription
+            showingErrorAlert = true
         }
-        project.guideSteps.removeAll()
-        
-        // Aggiunge i nuovi step ricalcolati
-        var orderIndex = 0
-        for section in result.sections {
-            let cleanSection = GeminiService.cleanSectionName(section.name)
-            for stepData in section.steps {
-                let step = GuideStep(
-                    sectionTitle: cleanSection,
-                    title: stepData.title ?? "",
-                    stepType: stepData.stepType ?? "single_action",
-                    instructionText: stepData.instruction,
-                    subSteps: stepData.subSteps ?? [],
-                    repeatVariations: stepData.repeatVariations ?? [],
-                    rowsPerRepeat: stepData.rowsPerRepeat,
-                    totalRepeats: stepData.totalRepeats,
-                    stitchCountBefore: stepData.stitchCountBefore,
-                    stitchCountAfter: stepData.stitchCountAfter,
-                    targetMeasureCm: stepData.targetMeasureCm,
-                    sourcePage: stepData.sourcePage,
-                    sourceQuote: stepData.sourceQuote,
-                    orderIndex: orderIndex,
-                    hasCounter: stepData.hasCounter ?? false,
-                    counterLabel: stepData.counterLabel,
-                    currentStepCount: 0,
-                    targetStepCount: stepData.targetStepCount
-                )
-                step.project = project
-                project.guideSteps.append(step)
-                orderIndex += 1
-            }
-        }
-        
-        try? modelContext.save()
-        successHaptic.notificationOccurred(.success)
-        dismiss()
     }
     
     private func restoreOriginalGuide() {
-        haptic.impactOccurred()
-        
-        project.isGaugeRecalculated = false
-        project.gaugeRecalculationSummary = nil
-        project.userGaugeStitches = nil
-        project.userGaugeRows = nil
-        
-        // Ricarica la guida standard bundle se No Frills
-        if let guideUrl = Bundle.main.url(forResource: "NoFrillsGuide_M", withExtension: "json"),
-           let guideData = try? Data(contentsOf: guideUrl),
-           let guide = try? JSONDecoder().decode(GeneratedGuideResponse.self, from: guideData) {
-            for oldStep in project.guideSteps {
-                modelContext.delete(oldStep)
-            }
-            project.guideSteps.removeAll()
-            
-            var orderIndex = 0
-            for section in guide.sections {
-                let cleanSection = GeminiService.cleanSectionName(section.name)
-                for stepData in section.steps {
-                    let step = GuideStep(
-                        sectionTitle: cleanSection,
-                        title: stepData.title ?? "",
-                        stepType: stepData.stepType ?? "single_action",
-                        instructionText: stepData.instruction,
-                        subSteps: stepData.subSteps ?? [],
-                        repeatVariations: stepData.repeatVariations ?? [],
-                        rowsPerRepeat: stepData.rowsPerRepeat,
-                        totalRepeats: stepData.totalRepeats,
-                        stitchCountBefore: stepData.stitchCountBefore,
-                        stitchCountAfter: stepData.stitchCountAfter,
-                        targetMeasureCm: stepData.targetMeasureCm,
-                        sourcePage: stepData.sourcePage,
-                        sourceQuote: stepData.sourceQuote,
-                        orderIndex: orderIndex,
-                        hasCounter: stepData.hasCounter ?? false,
-                        counterLabel: stepData.counterLabel,
-                        currentStepCount: 0,
-                        targetStepCount: stepData.targetStepCount
-                    )
-                    step.project = project
-                    project.guideSteps.append(step)
-                    orderIndex += 1
-                }
-            }
+        do {
+            try GaugeGuideManager.restoreOriginalGuide(for: project, modelContext: modelContext)
+            try? modelContext.save()
+            WatchConnectivityIOSManager.shared.syncAllProjectsToWatch()
+            haptic.impactOccurred()
+            successHaptic.notificationOccurred(.success)
+            dismiss()
+        } catch {
+            errorMessage = error.localizedDescription
+            showingErrorAlert = true
         }
-        
-        try? modelContext.save()
-        successHaptic.notificationOccurred(.success)
-        dismiss()
     }
     
     private func formatNum(_ val: Double) -> String {
@@ -683,5 +613,305 @@ private struct DiffPill: View {
     
     private func formatNum(_ val: Double) -> String {
         val.truncatingRemainder(dividingBy: 1) == 0 ? "\(Int(val))" : String(format: "%.1f", val)
+    }
+}
+
+// MARK: - Errori e Gestione Snapshot / Ricalcolo Guida
+enum GaugeRecalculationError: LocalizedError {
+    case emptySections
+    case snapshotCreationFailed
+    case noSnapshotAvailable(String)
+    
+    var errorDescription: String? {
+        switch self {
+        case .emptySections:
+            return "La guida ricalcolata non contiene sezioni valide."
+        case .snapshotCreationFailed:
+            return "Impossibile creare lo snapshot della guida originale. Operazione annullata."
+        case .noSnapshotAvailable(let msg):
+            return msg
+        }
+    }
+}
+
+struct GaugeGuideManager {
+    static func isNoFrillsProject(_ project: KnittingProject) -> Bool {
+        let titleLower = project.title.lowercased()
+        return titleLower.contains("no frills") || titleLower.contains("nofrills")
+    }
+    
+    static func makeOriginalGuideSnapshotData(for project: KnittingProject) -> Data? {
+        let sortedSteps = project.guideSteps.sorted(by: { $0.orderIndex < $1.orderIndex })
+        guard !sortedSteps.isEmpty else { return nil }
+        
+        var sectionsDict: [String: [GeneratedStep]] = [:]
+        var sectionNames: [String] = []
+        
+        for step in sortedSteps {
+            if sectionsDict[step.sectionTitle] == nil {
+                sectionsDict[step.sectionTitle] = []
+                sectionNames.append(step.sectionTitle)
+            }
+            let genStep = GeneratedStep(
+                stepId: step.id.uuidString,
+                title: step.title,
+                stepType: step.stepType,
+                instruction: step.instructionText,
+                subSteps: step.subSteps,
+                repeatVariations: step.repeatVariations,
+                rowsPerRepeat: step.rowsPerRepeat,
+                totalRepeats: step.totalRepeats,
+                stitchCountBefore: step.stitchCountBefore,
+                stitchCountAfter: step.stitchCountAfter,
+                targetMeasureCm: step.targetMeasureCm,
+                hasCounter: step.hasCounter,
+                counterLabel: step.counterLabel,
+                targetStepCount: step.targetStepCount,
+                sourcePage: step.sourcePage,
+                sourceQuote: step.sourceQuote
+            )
+            sectionsDict[step.sectionTitle]?.append(genStep)
+        }
+        
+        let originalGuide = GeneratedGuideResponse(
+            patternTitle: project.title,
+            designer: project.designer,
+            targetSize: project.selectedSize,
+            gauge: nil,
+            needles: nil,
+            recalculationSummary: nil,
+            changedStepTitles: nil,
+            sections: sectionNames.map { GeneratedSection(name: $0, steps: sectionsDict[$0] ?? []) }
+        )
+        
+        return try? JSONEncoder().encode(originalGuide)
+    }
+    
+    static func updateGuideStepInPlace(_ existing: GuideStep, cleanSection: String, stepData: GeneratedStep) {
+        existing.sectionTitle = cleanSection
+        if let title = stepData.title { existing.title = title }
+        if let type = stepData.stepType { existing.stepType = type }
+        existing.instructionText = stepData.instruction
+        if let sub = stepData.subSteps { existing.subSteps = sub }
+        if let rep = stepData.repeatVariations { existing.repeatVariations = rep }
+        existing.rowsPerRepeat = stepData.rowsPerRepeat
+        existing.totalRepeats = stepData.totalRepeats
+        existing.stitchCountBefore = stepData.stitchCountBefore
+        existing.stitchCountAfter = stepData.stitchCountAfter
+        existing.targetMeasureCm = stepData.targetMeasureCm
+        if let hc = stepData.hasCounter { existing.hasCounter = hc }
+        existing.counterLabel = stepData.counterLabel
+        existing.targetStepCount = stepData.targetStepCount
+        if let sp = stepData.sourcePage { existing.sourcePage = sp }
+        if let sq = stepData.sourceQuote { existing.sourceQuote = sq }
+        
+        // Riallinea progresso: se targetStepCount cambia, limita currentStepCount e ricalcola isCompleted
+        if let target = existing.targetStepCount, target > 0 {
+            if existing.currentStepCount > target {
+                existing.currentStepCount = target
+            }
+            let completed = existing.currentStepCount >= target
+            if completed != existing.isCompleted {
+                existing.isCompleted = completed
+                existing.completedAt = completed ? (existing.completedAt ?? Date()) : nil
+            }
+        }
+    }
+    
+    static func applyRecalculatedGuide(
+        to project: KnittingProject,
+        result: GeneratedGuideResponse,
+        modelContext: ModelContext? = nil
+    ) throws {
+        guard !result.sections.isEmpty else {
+            throw GaugeRecalculationError.emptySections
+        }
+        
+        // Salva uno snapshot della guida originale prima del primo ricalcolo
+        if !project.isGaugeRecalculated && project.originalGuideJSON == nil {
+            guard let snapshotData = makeOriginalGuideSnapshotData(for: project) else {
+                throw GaugeRecalculationError.snapshotCreationFailed
+            }
+            project.originalGuideJSON = snapshotData
+        }
+        
+        project.isGaugeRecalculated = true
+        project.gaugeRecalculationSummary = result.recalculationSummary
+        project.updatedAt = Date()
+        
+        let newStepsData = result.sections.flatMap { sec in
+            sec.steps.map { (cleanSection: GeminiService.cleanSectionName(sec.name), stepData: $0) }
+        }
+        let existingSteps = project.guideSteps.sorted(by: { $0.orderIndex < $1.orderIndex })
+        
+        let hasIdentityMatch: Bool = {
+            guard existingSteps.count == newStepsData.count else { return false }
+            let existingIds = Set(existingSteps.map { $0.id.uuidString })
+            let newIds = newStepsData.compactMap { $0.stepData.stepId }
+            return newIds.count == existingSteps.count && Set(newIds) == existingIds
+        }()
+        
+        let hasPositionalMatch: Bool = {
+            guard existingSteps.count == newStepsData.count else { return false }
+            for i in 0..<existingSteps.count {
+                let existing = existingSteps[i]
+                let stepData = newStepsData[i].stepData
+                if existing.stepType != (stepData.stepType ?? "single_action") || existing.sourcePage != stepData.sourcePage {
+                    return false
+                }
+            }
+            return true
+        }()
+        
+        if hasIdentityMatch {
+            let dataById = Dictionary(uniqueKeysWithValues: newStepsData.compactMap { item -> (String, (cleanSection: String, stepData: GeneratedStep))? in
+                guard let id = item.stepData.stepId else { return nil }
+                return (id, item)
+            })
+            for existing in existingSteps {
+                if let (cleanSection, stepData) = dataById[existing.id.uuidString] {
+                    updateGuideStepInPlace(existing, cleanSection: cleanSection, stepData: stepData)
+                }
+            }
+        } else if hasPositionalMatch {
+            for i in 0..<existingSteps.count {
+                let existing = existingSteps[i]
+                let (cleanSection, stepData) = newStepsData[i]
+                updateGuideStepInPlace(existing, cleanSection: cleanSection, stepData: stepData)
+            }
+        } else {
+            for oldStep in project.guideSteps {
+                modelContext?.delete(oldStep)
+            }
+            project.guideSteps.removeAll()
+            
+            var orderIndex = 0
+            for (cleanSection, stepData) in newStepsData {
+                let step = GuideStep(
+                    sectionTitle: cleanSection,
+                    title: stepData.title ?? "",
+                    stepType: stepData.stepType ?? "single_action",
+                    instructionText: stepData.instruction,
+                    subSteps: stepData.subSteps ?? [],
+                    repeatVariations: stepData.repeatVariations ?? [],
+                    rowsPerRepeat: stepData.rowsPerRepeat,
+                    totalRepeats: stepData.totalRepeats,
+                    stitchCountBefore: stepData.stitchCountBefore,
+                    stitchCountAfter: stepData.stitchCountAfter,
+                    targetMeasureCm: stepData.targetMeasureCm,
+                    sourcePage: stepData.sourcePage,
+                    sourceQuote: stepData.sourceQuote,
+                    orderIndex: orderIndex,
+                    hasCounter: stepData.hasCounter ?? false,
+                    counterLabel: stepData.counterLabel,
+                    currentStepCount: 0,
+                    targetStepCount: stepData.targetStepCount
+                )
+                step.project = project
+                project.guideSteps.append(step)
+                orderIndex += 1
+            }
+        }
+    }
+    
+    static func restoreOriginalGuide(
+        for project: KnittingProject,
+        modelContext: ModelContext? = nil
+    ) throws {
+        var originalGuide: GeneratedGuideResponse?
+        if let data = project.originalGuideJSON,
+           let decoded = try? JSONDecoder().decode(GeneratedGuideResponse.self, from: data) {
+            originalGuide = decoded
+        } else if isNoFrillsProject(project),
+                  let guideUrl = Bundle.main.url(forResource: "NoFrillsGuide_M", withExtension: "json"),
+                  let guideData = try? Data(contentsOf: guideUrl),
+                  let decoded = try? JSONDecoder().decode(GeneratedGuideResponse.self, from: guideData) {
+            originalGuide = decoded
+        }
+        
+        guard let guide = originalGuide, !guide.sections.isEmpty else {
+            throw GaugeRecalculationError.noSnapshotAvailable("Impossibile trovare lo snapshot della guida originale per questo progetto.")
+        }
+        
+        let originalStepsData = guide.sections.flatMap { sec in
+            sec.steps.map { (cleanSection: GeminiService.cleanSectionName(sec.name), stepData: $0) }
+        }
+        let existingSteps = project.guideSteps.sorted(by: { $0.orderIndex < $1.orderIndex })
+        
+        let hasIdentityMatch: Bool = {
+            guard existingSteps.count == originalStepsData.count else { return false }
+            let existingIds = Set(existingSteps.map { $0.id.uuidString })
+            let origIds = originalStepsData.compactMap { $0.stepData.stepId }
+            return origIds.count == existingSteps.count && Set(origIds) == existingIds
+        }()
+        
+        let hasPositionalMatch: Bool = {
+            guard existingSteps.count == originalStepsData.count else { return false }
+            for i in 0..<existingSteps.count {
+                let existing = existingSteps[i]
+                let stepData = originalStepsData[i].stepData
+                if existing.stepType != (stepData.stepType ?? "single_action") || existing.sourcePage != stepData.sourcePage {
+                    return false
+                }
+            }
+            return true
+        }()
+        
+        if hasIdentityMatch {
+            let dataById = Dictionary(uniqueKeysWithValues: originalStepsData.compactMap { item -> (String, (cleanSection: String, stepData: GeneratedStep))? in
+                guard let id = item.stepData.stepId else { return nil }
+                return (id, item)
+            })
+            for existing in existingSteps {
+                if let (cleanSection, stepData) = dataById[existing.id.uuidString] {
+                    updateGuideStepInPlace(existing, cleanSection: cleanSection, stepData: stepData)
+                }
+            }
+        } else if hasPositionalMatch {
+            for i in 0..<existingSteps.count {
+                let existing = existingSteps[i]
+                let (cleanSection, stepData) = originalStepsData[i]
+                updateGuideStepInPlace(existing, cleanSection: cleanSection, stepData: stepData)
+            }
+        } else {
+            for oldStep in project.guideSteps {
+                modelContext?.delete(oldStep)
+            }
+            project.guideSteps.removeAll()
+            
+            var orderIndex = 0
+            for (cleanSection, stepData) in originalStepsData {
+                let step = GuideStep(
+                    sectionTitle: cleanSection,
+                    title: stepData.title ?? "",
+                    stepType: stepData.stepType ?? "single_action",
+                    instructionText: stepData.instruction,
+                    subSteps: stepData.subSteps ?? [],
+                    repeatVariations: stepData.repeatVariations ?? [],
+                    rowsPerRepeat: stepData.rowsPerRepeat,
+                    totalRepeats: stepData.totalRepeats,
+                    stitchCountBefore: stepData.stitchCountBefore,
+                    stitchCountAfter: stepData.stitchCountAfter,
+                    targetMeasureCm: stepData.targetMeasureCm,
+                    sourcePage: stepData.sourcePage,
+                    sourceQuote: stepData.sourceQuote,
+                    orderIndex: orderIndex,
+                    hasCounter: stepData.hasCounter ?? false,
+                    counterLabel: stepData.counterLabel,
+                    currentStepCount: 0,
+                    targetStepCount: stepData.targetStepCount
+                )
+                step.project = project
+                project.guideSteps.append(step)
+                orderIndex += 1
+            }
+        }
+        
+        project.originalGuideJSON = nil
+        project.isGaugeRecalculated = false
+        project.gaugeRecalculationSummary = nil
+        project.userGaugeStitches = nil
+        project.userGaugeRows = nil
+        project.updatedAt = Date()
     }
 }

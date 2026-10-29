@@ -21,6 +21,7 @@ final class KnittingProject {
     var userGaugeRows: Double?
     var isGaugeRecalculated: Bool = false
     var gaugeRecalculationSummary: String?
+    @Attribute(.externalStorage) var originalGuideJSON: Data? = nil
     
     @Relationship(deleteRule: .cascade) var counters: [RowCounter] = []
     @Relationship(deleteRule: .cascade) var guideSteps: [GuideStep] = []
@@ -65,14 +66,15 @@ extension KnittingProject {
         for step in sorted {
             let startSts = step.stitchCountBefore ?? (lastKnownStitches > 0 ? lastKnownStitches : 0)
             let endSts = step.stitchCountAfter ?? startSts
-            if endSts > 0 { lastKnownStitches = endSts }
+            let meaningfulStitches = max(startSts, endSts)
+            if meaningfulStitches > 0 { lastKnownStitches = endSts }
             
             let workedRows = step.currentStepCount
             guard workedRows > 0 else { continue }
+            guard meaningfulStitches > 0 else { continue }
             
             if startSts == endSts || startSts == 0 || endSts == 0 {
-                let sts = max(startSts, endSts)
-                total += workedRows * (sts > 0 ? sts : 1)
+                total += workedRows * meaningfulStitches
             } else {
                 let target = max(step.targetStepCount ?? workedRows, workedRows)
                 let diff = Double(endSts - startSts)
@@ -108,10 +110,12 @@ extension KnittingProject {
             hasValidTargets = true
             let startSts = step.stitchCountBefore ?? (lastKnownStitches > 0 ? lastKnownStitches : 0)
             let endSts = step.stitchCountAfter ?? startSts
-            if endSts > 0 { lastKnownStitches = endSts }
+            let meaningfulStitches = max(startSts, endSts)
+            if meaningfulStitches > 0 { lastKnownStitches = endSts }
+            guard meaningfulStitches > 0 else { continue }
             
             if startSts == endSts || startSts == 0 || endSts == 0 {
-                total += targetRows * max(startSts, endSts)
+                total += targetRows * meaningfulStitches
             } else {
                 let diff = Double(endSts - startSts)
                 for r in 1...targetRows {

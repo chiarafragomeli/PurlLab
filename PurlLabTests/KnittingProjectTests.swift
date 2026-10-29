@@ -97,6 +97,28 @@ final class KnittingProjectTests: XCTestCase {
         XCTAssertLessThan(total, 2500)
     }
     
+    func testTotalStitchesWorkedIgnoresStepsWithoutMeaningfulStitchCounts() {
+        let project = KnittingProject(title: "Scheda senza maglie note")
+        context.insert(project)
+        
+        let step = GuideStep(
+            sectionTitle: "Info",
+            title: "Nota",
+            instructionText: "Lavorare a mano senza riferimenti di maglie.",
+            stitchCountBefore: 0,
+            stitchCountAfter: 0,
+            orderIndex: 0,
+            hasCounter: true,
+            currentStepCount: 5,
+            targetStepCount: 10
+        )
+        step.project = project
+        project.guideSteps = [step]
+        
+        XCTAssertEqual(project.totalStitchesWorked, 0)
+        XCTAssertNil(project.targetTotalStitches)
+    }
+    
     func testTargetTotalRowsAndStitches() {
         let project = KnittingProject(title: "Top-Down Sweater")
         context.insert(project)
