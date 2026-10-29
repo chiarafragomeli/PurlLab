@@ -60,36 +60,57 @@ extension KnittingProject {
     
     /// Calcola il numero totale di maglie lavorate nel progetto finora.
     /// Per ciascuna scheda con ferri lavorati, tiene conto delle maglie per ferro (anche in presenza di aumenti/diminuzioni).
+    /// Per le schede che contano maglie (isStitchCounter, es. Avvio maglie), somma direttamente le maglie lavorate.
     var totalStitchesWorked: Int {
         var total = 0
         var lastKnownStitches = 0
         
         let sorted = guideSteps.sorted(by: { $0.orderIndex < $1.orderIndex })
         for step in sorted {
-            let startSts = step.stitchCountBefore ?? (lastKnownStitches > 0 ? lastKnownStitches : 0)
-            let endSts = step.stitchCountAfter ?? startSts
-            let meaningfulStitches = max(startSts, endSts)
-            if meaningfulStitches > 0 { lastKnownStitches = endSts }
-            
-            let workedRows = step.currentStepCount
-            guard workedRows > 0 else { continue }
-            guard meaningfulStitches > 0 else { continue }
-            
-            if startSts == endSts || startSts == 0 || endSts == 0 {
-                total += workedRows * meaningfulStitches
+            if step.isStitchCounter {
+                // Per le schede che contano maglie (es. Avvio maglie, aumenti singoli), il contatore È già il numero di maglie lavorate!
+                let sts = step.currentStepCount
+                total += sts
+                if sts > 0 {
+                    lastKnownStitches = max(lastKnownStitches, step.stitchCountAfter ?? sts)
+                } else if let target = step.targetStepCount, target > 0 {
+                    lastKnownStitches = max(lastKnownStitches, target)
+                }
             } else {
-                let target = max(step.targetStepCount ?? workedRows, workedRows)
-                let diff = Double(endSts - startSts)
-                for r in 1...workedRows {
-                    let progress = Double(r) / Double(target)
-                    let stsInRow = Int(round(Double(startSts) + diff * progress))
-                    total += max(1, stsInRow)
+                // Per le schede che contano ferri/giri
+                let startSts = step.stitchCountBefore ?? (lastKnownStitches > 0 ? lastKnownStitches : 0)
+                let endSts = step.stitchCountAfter ?? startSts
+                let meaningfulStitches = max(startSts, endSts)
+                if meaningfulStitches > 0 { lastKnownStitches = endSts }
+                
+                let workedRows = step.currentStepCount
+                guard workedRows > 0 else { continue }
+                guard meaningfulStitches > 0 else { continue }
+                
+                if startSts == endSts || startSts == 0 || endSts == 0 {
+                    total += workedRows * meaningfulStitches
+                } else {
+                    let target = max(step.targetStepCount ?? workedRows, workedRows)
+                    let diff = Double(endSts - startSts)
+                    for r in 1...workedRows {
+                        let progress = Double(r) / Double(target)
+                        let stsInRow = Int(round(Double(startSts) + diff * progress))
+                        total += max(1, stsInRow)
+                    }
                 }
             }
         }
         
+        // Includi anche eventuali contatori personalizzati esplicitamente dedicati alle maglie
+        for counter in counters {
+            let title = counter.title.lowercased()
+            if title.contains("magli") || title.contains("punti") || title.contains("stitch") {
+                total += counter.currentCount
+            }
+        }
+        
         // Se non ci sono schede guida ma ci sono contatori manuali, stima dalle maglie del campione
-        if total == 0 {
+        if total == 0 && guideSteps.isEmpty {
             let manualRows = counters.first?.currentCount ?? 0
             if manualRows > 0 {
                 let gaugeSts = Int(round(userGaugeStitches ?? patternGaugeStitches ?? 20.0))
@@ -109,21 +130,28 @@ extension KnittingProject {
         
         for step in sorted {
             guard let targetRows = step.effectiveTargetCount, targetRows > 0 else { continue }
-            hasValidTargets = true
-            let startSts = step.stitchCountBefore ?? (lastKnownStitches > 0 ? lastKnownStitches : 0)
-            let endSts = step.stitchCountAfter ?? startSts
-            let meaningfulStitches = max(startSts, endSts)
-            if meaningfulStitches > 0 { lastKnownStitches = endSts }
-            guard meaningfulStitches > 0 else { continue }
             
-            if startSts == endSts || startSts == 0 || endSts == 0 {
-                total += targetRows * meaningfulStitches
+            if step.isStitchCounter {
+                hasValidTargets = true
+                total += targetRows
+                lastKnownStitches = max(lastKnownStitches, step.stitchCountAfter ?? targetRows)
             } else {
-                let diff = Double(endSts - startSts)
-                for r in 1...targetRows {
-                    let progress = Double(r) / Double(targetRows)
-                    let stsInRow = Int(round(Double(startSts) + diff * progress))
-                    total += max(1, stsInRow)
+                let startSts = step.stitchCountBefore ?? (lastKnownStitches > 0 ? lastKnownStitches : 0)
+                let endSts = step.stitchCountAfter ?? startSts
+                let meaningfulStitches = max(startSts, endSts)
+                if meaningfulStitches > 0 { lastKnownStitches = endSts }
+                guard meaningfulStitches > 0 else { continue }
+                hasValidTargets = true
+                
+                if startSts == endSts || startSts == 0 || endSts == 0 {
+                    total += targetRows * meaningfulStitches
+                } else {
+                    let diff = Double(endSts - startSts)
+                    for r in 1...targetRows {
+                        let progress = Double(r) / Double(targetRows)
+                        let stsInRow = Int(round(Double(startSts) + diff * progress))
+                        total += max(1, stsInRow)
+                    }
                 }
             }
         }

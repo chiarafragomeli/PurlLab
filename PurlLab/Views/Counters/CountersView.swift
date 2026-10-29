@@ -350,6 +350,7 @@ struct ActiveSectionCounterCard: View {
     }
     
     private func syncChanges() {
+        project.updatedAt = Date()
         if let global = project.counters.first(where: {
             $0.title.localizedCaseInsensitiveContains("globale") ||
             $0.title.localizedCaseInsensitiveContains("totale")

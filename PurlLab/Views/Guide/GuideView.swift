@@ -963,6 +963,7 @@ struct CardCounterBoxView: View {
                     haptic.impactOccurred()
                     if step.currentStepCount > 0 {
                         step.currentStepCount -= 1
+                        step.project?.updatedAt = Date()
                         if let global = step.project?.counters.first(where: { $0.title.localizedCaseInsensitiveContains("globale") || $0.title.localizedCaseInsensitiveContains("totale") }) {
                             global.currentCount = step.project?.totalGuideRowsWorked ?? 0
                         }
@@ -998,6 +999,7 @@ struct CardCounterBoxView: View {
                     TimerManager.shared.registerInteraction()
                     haptic.impactOccurred()
                     step.currentStepCount += 1
+                    step.project?.updatedAt = Date()
                     if let global = step.project?.counters.first(where: { $0.title.localizedCaseInsensitiveContains("globale") || $0.title.localizedCaseInsensitiveContains("totale") }) {
                         global.currentCount = step.project?.totalGuideRowsWorked ?? 0
                     }

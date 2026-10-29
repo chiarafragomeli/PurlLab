@@ -93,124 +93,65 @@ struct PDFKitRepresentedView: UIViewRepresentable {
 struct PatternPDFView: View {
     let pdfData: Data
     @State private var currentPage: Int = 1
-    @State private var sliderOffset: CGFloat = 200
-    @State private var isSliderVisible: Bool = true
     @State private var zoomTrigger: PDFZoomTrigger? = nil
     
     var body: some View {
-        GeometryReader { geometry in
-            ZStack(alignment: .top) {
-                // Vista PDF nativa con pinch-to-zoom e scala libera
-                PDFKitRepresentedView(
-                    pdfData: pdfData,
-                    currentPage: $currentPage,
-                    zoomTrigger: $zoomTrigger
-                )
-                .edgesIgnoringSafeArea(.bottom)
-                
-                // Evidenziatore di riga trascinabile
-                if isSliderVisible {
-                    VStack(spacing: 0) {
-                        Rectangle()
-                            .fill(Color.yellow.opacity(0.35))
-                            .frame(height: 38)
-                            .overlay(
-                                Rectangle()
-                                    .frame(height: 2)
-                                    .foregroundColor(.orange),
-                                alignment: .bottom
-                            )
-                        
-                        // Maniglia di trascinamento
-                        HStack {
-                            Spacer()
-                            HStack(spacing: 4) {
-                                Image(systemName: "line.3.horizontal")
-                                    .font(.caption2)
-                                Text("Evidenziatore")
-                                    .font(.caption2.bold())
-                            }
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 4)
-                            .background(Color.orange)
-                            .foregroundColor(.white)
-                            .clipShape(Capsule())
-                            .shadow(radius: 2)
-                            .padding(.trailing, 20)
-                        }
-                    }
-                    .offset(y: sliderOffset)
-                    .gesture(
-                        DragGesture()
-                            .onChanged { value in
-                                let newOffset = sliderOffset + value.translation.height
-                                sliderOffset = min(max(newOffset, 0), geometry.size.height - 50)
-                            }
-                    )
-                }
-                
-                // Controlli Flottanti per Zoom e Adattamento (in basso a destra)
-                VStack {
+        ZStack(alignment: .top) {
+            // Vista PDF nativa con pinch-to-zoom e scala libera
+            PDFKitRepresentedView(
+                pdfData: pdfData,
+                currentPage: $currentPage,
+                zoomTrigger: $zoomTrigger
+            )
+            .edgesIgnoringSafeArea(.bottom)
+            
+            // Controlli Flottanti per Zoom e Adattamento (in basso a destra)
+            VStack {
+                Spacer()
+                HStack {
                     Spacer()
-                    HStack {
-                        Spacer()
-                        VStack(spacing: 8) {
-                            // Toggle Evidenziatore
-                            Button {
-                                withAnimation { isSliderVisible.toggle() }
-                            } label: {
-                                Image(systemName: isSliderVisible ? "highlighter" : "highlighter")
-                                    .symbolVariant(isSliderVisible ? .fill : .none)
-                                    .font(.title3.bold())
-                                    .foregroundColor(isSliderVisible ? .accentColor : .primary)
-                                    .frame(width: 44, height: 44)
-                                    .background(Color(.secondarySystemGroupedBackground))
-                                    .clipShape(Circle())
-                                    .shadow(color: Color.black.opacity(0.12), radius: 6, x: 0, y: 2)
-                            }
-                            
-                            // Zoom In (+)
-                            Button {
-                                zoomTrigger = .zoomIn
-                            } label: {
-                                Image(systemName: "plus.magnifyingglass")
-                                    .font(.title3.bold())
-                                    .foregroundColor(.primary)
-                                    .frame(width: 44, height: 44)
-                                    .background(Color(.secondarySystemGroupedBackground))
-                                    .clipShape(Circle())
-                                    .shadow(color: Color.black.opacity(0.12), radius: 6, x: 0, y: 2)
-                            }
-                            
-                            // Zoom Out (-)
-                            Button {
-                                zoomTrigger = .zoomOut
-                            } label: {
-                                Image(systemName: "minus.magnifyingglass")
-                                    .font(.title3.bold())
-                                    .foregroundColor(.primary)
-                                    .frame(width: 44, height: 44)
-                                    .background(Color(.secondarySystemGroupedBackground))
-                                    .clipShape(Circle())
-                                    .shadow(color: Color.black.opacity(0.12), radius: 6, x: 0, y: 2)
-                            }
-                            
-                            // Adatta alla larghezza (Reset Zoom)
-                            Button {
-                                zoomTrigger = .reset
-                            } label: {
-                                Image(systemName: "arrow.up.left.and.down.right.magnifyingglass")
-                                    .font(.subheadline.bold())
-                                    .foregroundColor(.primary)
-                                    .frame(width: 44, height: 44)
-                                    .background(Color(.secondarySystemGroupedBackground))
-                                    .clipShape(Circle())
-                                    .shadow(color: Color.black.opacity(0.12), radius: 6, x: 0, y: 2)
-                            }
+                    VStack(spacing: 8) {
+                        // Zoom In (+)
+                        Button {
+                            zoomTrigger = .zoomIn
+                        } label: {
+                            Image(systemName: "plus.magnifyingglass")
+                                .font(.title3.bold())
+                                .foregroundColor(.primary)
+                                .frame(width: 44, height: 44)
+                                .background(Color(.secondarySystemGroupedBackground))
+                                .clipShape(Circle())
+                                .shadow(color: Color.black.opacity(0.12), radius: 6, x: 0, y: 2)
                         }
-                        .padding(.trailing, 16)
-                        .padding(.bottom, 24)
+                        
+                        // Zoom Out (-)
+                        Button {
+                            zoomTrigger = .zoomOut
+                        } label: {
+                            Image(systemName: "minus.magnifyingglass")
+                                .font(.title3.bold())
+                                .foregroundColor(.primary)
+                                .frame(width: 44, height: 44)
+                                .background(Color(.secondarySystemGroupedBackground))
+                                .clipShape(Circle())
+                                .shadow(color: Color.black.opacity(0.12), radius: 6, x: 0, y: 2)
+                        }
+                        
+                        // Adatta alla larghezza (Reset Zoom)
+                        Button {
+                            zoomTrigger = .reset
+                        } label: {
+                            Image(systemName: "arrow.up.left.and.down.right.magnifyingglass")
+                                .font(.subheadline.bold())
+                                .foregroundColor(.primary)
+                                .frame(width: 44, height: 44)
+                                .background(Color(.secondarySystemGroupedBackground))
+                                .clipShape(Circle())
+                                .shadow(color: Color.black.opacity(0.12), radius: 6, x: 0, y: 2)
+                        }
                     }
+                    .padding(.trailing, 16)
+                    .padding(.bottom, 24)
                 }
             }
         }
