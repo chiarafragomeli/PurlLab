@@ -192,8 +192,13 @@ struct ProjectListView: View {
             }
             .navigationTitle("I Miei Progetti")
             .navigationDestination(for: UUID.self) { projectId in
-                if let project = projects.first(where: { $0.id == projectId }) {
-                    ProjectDetailView(project: project)
+                if let project = projects.first(where: { $0.id == projectId && !$0.isDeleted }) {
+                    ProjectDetailView(project: project, onDeleteProject: {
+                        navigationPath.removeAll()
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                            deleteProject(project)
+                        }
+                    })
                 }
             }
             .onReceive(NotificationCenter.default.publisher(for: .watchDidSelectProject)) { notification in
@@ -329,6 +334,9 @@ struct ProjectListView: View {
     }
     
     private func deleteProject(_ project: KnittingProject) {
+        if navigationPath.contains(project.id) {
+            navigationPath.removeAll()
+        }
         if let idx = projects.firstIndex(where: { $0.id == project.id }) {
             modelContext.delete(projects[idx])
             try? modelContext.save()
@@ -444,10 +452,13 @@ struct ResumeProjectHeroCard: View {
     
 
     var body: some View {
-        Button {
-            haptic.impactOccurred()
-            onResume()
-        } label: {
+        if project.isDeleted || project.modelContext == nil {
+            EmptyView()
+        } else {
+            Button {
+                haptic.impactOccurred()
+                onResume()
+            } label: {
             VStack(alignment: .leading, spacing: 14) {
                 // Header riga: Stato e tempo
                 HStack(alignment: .center) {
@@ -549,6 +560,7 @@ struct ResumeProjectHeroCard: View {
         .buttonStyle(.plain)
     }
 }
+}
 
 struct ProjectRowView: View {
     let project: KnittingProject
@@ -561,7 +573,10 @@ struct ProjectRowView: View {
     }
     
     var body: some View {
-        HStack(spacing: 14) {
+        if project.isDeleted || project.modelContext == nil {
+            EmptyView()
+        } else {
+            HStack(spacing: 14) {
             ZStack {
                 Circle()
                     .fill(project.completedAt != nil ? Color.green.opacity(0.12) : Color.accentColor.opacity(0.12))
@@ -628,5 +643,6 @@ struct ProjectRowView: View {
             }
         }
         .padding(.vertical, 4)
+        }
     }
 }

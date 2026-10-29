@@ -30,6 +30,30 @@ final class GuideStep {
     
     var project: KnittingProject?
     
+    var isDetachedOrDeleted: Bool {
+        isDeleted || modelContext == nil
+    }
+    
+    var safeSubSteps: [String] {
+        guard !isDetachedOrDeleted else { return [] }
+        return subSteps
+    }
+    
+    var safeRepeatVariations: [String] {
+        guard !isDetachedOrDeleted else { return [] }
+        return repeatVariations
+    }
+    
+    var safeExtraCounterLabels: [String] {
+        guard !isDetachedOrDeleted else { return [] }
+        return extraCounterLabels
+    }
+    
+    var safeExtraCounterValues: [Int] {
+        guard !isDetachedOrDeleted else { return [] }
+        return extraCounterValues
+    }
+    
     init(
         sectionTitle: String,
         title: String = "",

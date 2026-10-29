@@ -12,40 +12,46 @@ struct CountersView: View {
     }
     
     var body: some View {
-        ScrollView {
-            VStack(spacing: 20) {
-                // MARK: - 1. HERO: STATISTICHE GLOBALI DI PROGETTO
-                GlobalProjectStatsCard(project: project)
-                
-                // MARK: - 2. SEZIONE ATTUALMENTE IN LAVORAZIONE
-                if let step = activeStep {
-                    ActiveSectionCounterCard(project: project, step: step)
-                } else if let mainCounter = project.counters.first(where: { $0.title.localizedCaseInsensitiveContains("globale") }) ?? project.counters.first {
-                    CounterCardView(counter: mainCounter) {
-                        deleteCounter(mainCounter)
+        Group {
+            if project.isDeleted || project.modelContext == nil {
+                Color.clear
+            } else {
+                ScrollView {
+                    VStack(spacing: 20) {
+                        // MARK: - 1. HERO: STATISTICHE GLOBALI DI PROGETTO
+                        GlobalProjectStatsCard(project: project)
+                        
+                        // MARK: - 2. SEZIONE ATTUALMENTE IN LAVORAZIONE
+                        if let step = activeStep {
+                            ActiveSectionCounterCard(project: project, step: step)
+                        } else if let mainCounter = project.counters.first(where: { $0.title.localizedCaseInsensitiveContains("globale") }) ?? project.counters.first {
+                            CounterCardView(counter: mainCounter) {
+                                deleteCounter(mainCounter)
+                            }
+                        }
+                        
+                        // MARK: - 3. PANORAMICA SEZIONI DELLA GUIDA
+                        if !project.guideSteps.isEmpty {
+                            GuideSectionsProgressCard(project: project)
+                        }
+                        
+                        // MARK: - 4. CONTATORI ACCESSORI PERSONALIZZATI
+                        CustomCountersSection(
+                            project: project,
+                            onAddCounter: { showingAddCounterSheet = true },
+                            onDeleteCounter: { counter in deleteCounter(counter) }
+                        )
                     }
+                    .padding(.horizontal)
+                    .padding(.vertical, 12)
                 }
-                
-                // MARK: - 3. PANORAMICA SEZIONI DELLA GUIDA
-                if !project.guideSteps.isEmpty {
-                    GuideSectionsProgressCard(project: project)
+                .sheet(isPresented: $showingAddCounterSheet) {
+                    AddCounterSheet(project: project)
                 }
-                
-                // MARK: - 4. CONTATORI ACCESSORI PERSONALIZZATI
-                CustomCountersSection(
-                    project: project,
-                    onAddCounter: { showingAddCounterSheet = true },
-                    onDeleteCounter: { counter in deleteCounter(counter) }
-                )
+                .onAppear {
+                    WatchConnectivityIOSManager.shared.setActiveProject(project)
+                }
             }
-            .padding(.horizontal)
-            .padding(.vertical, 12)
-        }
-        .sheet(isPresented: $showingAddCounterSheet) {
-            AddCounterSheet(project: project)
-        }
-        .onAppear {
-            WatchConnectivityIOSManager.shared.setActiveProject(project)
         }
     }
     
@@ -219,16 +225,20 @@ struct ActiveSectionCounterCard: View {
     }
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            headerRow
-            stitchesBadge
-            progressSection
-            counterButtonsRow
+        if step.isDetachedOrDeleted {
+            EmptyView()
+        } else {
+            VStack(alignment: .leading, spacing: 14) {
+                headerRow
+                stitchesBadge
+                progressSection
+                counterButtonsRow
+            }
+            .padding(18)
+            .background(Color(.secondarySystemGroupedBackground))
+            .cornerRadius(20)
+            .shadow(color: Color.black.opacity(0.04), radius: 8, x: 0, y: 2)
         }
-        .padding(18)
-        .background(Color(.secondarySystemGroupedBackground))
-        .cornerRadius(20)
-        .shadow(color: Color.black.opacity(0.04), radius: 8, x: 0, y: 2)
     }
     
     @ViewBuilder

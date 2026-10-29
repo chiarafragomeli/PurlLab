@@ -51,7 +51,9 @@ struct GuideView: View {
     
     var body: some View {
         Group {
-            if project.guideSteps.isEmpty {
+            if project.isDeleted || project.modelContext == nil {
+                Color.clear
+            } else if project.guideSteps.isEmpty {
                     ContentUnavailableView {
                         Label("Nessuna Guida", systemImage: "sparkles")
                     } description: {
@@ -427,21 +429,25 @@ struct GuideSingleCardView: View {
     
     var currentStep: GuideStep? {
         guard !steps.isEmpty, currentIndex >= 0, currentIndex < steps.count else { return nil }
-        return steps[currentIndex]
+        let step = steps[currentIndex]
+        guard !step.isDetachedOrDeleted else { return nil }
+        return step
     }
     
     // Calcola quale subStep è attivo se siamo in un pattern ripetuto
     private func isSubStepActive(index: Int, for step: GuideStep) -> Bool {
-        guard let rowsPerRep = step.rowsPerRepeat, rowsPerRep > 1, !step.subSteps.isEmpty else {
+        guard !step.isDetachedOrDeleted else { return false }
+        let sub = step.safeSubSteps
+        guard let rowsPerRep = step.rowsPerRepeat, rowsPerRep > 1, !sub.isEmpty else {
             return false
         }
         if let target = step.targetStepCount, step.currentStepCount >= target {
             return false
         }
         let currentRowInCycle = (step.currentStepCount % rowsPerRep) + 1 // 1..rowsPerRep
-        if step.subSteps.count == rowsPerRep {
+        if sub.count == rowsPerRep {
             return index == (currentRowInCycle - 1)
-        } else if rowsPerRep == 6 && step.subSteps.count == 2 {
+        } else if rowsPerRep == 6 && sub.count == 2 {
             // Caso tipico maniche: Giri 1-5 (index 0) e Giro 6 di diminuzione (index 1)
             return currentRowInCycle < 6 ? (index == 0) : (index == 1)
         }
@@ -450,7 +456,9 @@ struct GuideSingleCardView: View {
     
     // Calcola quale repeatVariation è attiva
     private func isVariationActive(index: Int, for step: GuideStep) -> Bool {
-        guard let rowsPerRep = step.rowsPerRepeat, rowsPerRep > 0, !step.repeatVariations.isEmpty else {
+        guard !step.isDetachedOrDeleted else { return false }
+        let variations = step.safeRepeatVariations
+        guard let rowsPerRep = step.rowsPerRepeat, rowsPerRep > 0, !variations.isEmpty else {
             return false
         }
         if let target = step.targetStepCount, step.currentStepCount >= target {
@@ -693,7 +701,8 @@ struct GuideSingleCardView: View {
                         }
                         
                         // SUB-STEPS (Checklist essenziale con indicatore attivo)
-                        if !step.subSteps.isEmpty {
+                        let currentSubSteps = step.safeSubSteps
+                        if !currentSubSteps.isEmpty {
                             VStack(alignment: .leading, spacing: 6) {
                                 HStack(spacing: 6) {
                                     Image(systemName: step.rowsPerRepeat != nil ? "repeat" : "list.number")
@@ -705,7 +714,7 @@ struct GuideSingleCardView: View {
                                 }
                                 .padding(.bottom, 2)
                                 
-                                ForEach(Array(step.subSteps.enumerated()), id: \.offset) { idx, subText in
+                                ForEach(Array(currentSubSteps.enumerated()), id: \.offset) { idx, subText in
                                     let isActive = isSubStepActive(index: idx, for: step)
                                     HStack(alignment: .top, spacing: 10) {
                                         if isActive {
@@ -749,7 +758,8 @@ struct GuideSingleCardView: View {
                         }
                         
                         // REPEAT VARIATIONS
-                        if !step.repeatVariations.isEmpty {
+                        let currentVariations = step.safeRepeatVariations
+                        if !currentVariations.isEmpty {
                             VStack(alignment: .leading, spacing: 6) {
                                 HStack(spacing: 6) {
                                     Image(systemName: "sparkles")
@@ -761,7 +771,7 @@ struct GuideSingleCardView: View {
                                 }
                                 .padding(.bottom, 2)
                                 
-                                ForEach(Array(step.repeatVariations.enumerated()), id: \.offset) { idx, varText in
+                                ForEach(Array(currentVariations.enumerated()), id: \.offset) { idx, varText in
                                     let isCurrentVar = isVariationActive(index: idx, for: step)
                                     let isPastVar = (step.rowsPerRepeat != nil) && (step.currentStepCount / step.rowsPerRepeat!) > idx
                                     

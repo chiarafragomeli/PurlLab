@@ -117,6 +117,8 @@ struct UnifiedProjectBottomBar: View {
 
 struct ProjectDetailView: View {
     @Bindable var project: KnittingProject
+    var onDeleteProject: (() -> Void)? = nil
+    
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
     @Environment(\.scenePhase) private var scenePhase
@@ -133,7 +135,11 @@ struct ProjectDetailView: View {
     @State private var editedSize = ""
     
     var body: some View {
-        VStack(spacing: 0) {
+        Group {
+            if project.isDeleted || project.modelContext == nil {
+                Color.clear
+            } else {
+                VStack(spacing: 0) {
             // Tab Content
             TabView(selection: $selectedTab) {
                 GuideView(
@@ -289,15 +295,22 @@ struct ProjectDetailView: View {
         .alert("Elimina Progetto", isPresented: $showingDeleteAlert) {
             Button("Annulla", role: .cancel) { }
             Button("Elimina", role: .destructive) {
-                dismiss()
-                modelContext.delete(project)
-                try? modelContext.save()
-                WatchConnectivityIOSManager.shared.syncAllProjectsToWatch()
+                if let onDelete = onDeleteProject {
+                    onDelete()
+                } else {
+                    dismiss()
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                        modelContext.delete(project)
+                        try? modelContext.save()
+                        WatchConnectivityIOSManager.shared.syncAllProjectsToWatch()
+                    }
+                }
             }
         } message: {
             Text("Sei sicuro di voler eliminare \"\(project.title)\"? L'azione è irreversibile e cancellerà tutte le schede e i contatori associati.")
         }
         .onAppear {
+            guard !project.isDeleted, project.modelContext != nil else { return }
             let sorted = project.guideSteps.sorted(by: { $0.orderIndex < $1.orderIndex })
             let savedIdx = UserDefaults.standard.object(forKey: "purl_lab_last_guide_step_\(project.id)") as? Int
             if let saved = savedIdx, saved >= 0 && saved < sorted.count {
@@ -310,6 +323,7 @@ struct ProjectDetailView: View {
         }
         .onDisappear {
             // Salva la sessione attiva se si esce dal progetto
+            guard !project.isDeleted, project.modelContext != nil else { return }
             if TimerManager.shared.isRunning && TimerManager.shared.activeProjectId == project.id {
                 let duration = TimerManager.shared.pause()
                 project.totalSecondsWorked += duration
@@ -317,6 +331,7 @@ struct ProjectDetailView: View {
             }
         }
         .onChange(of: scenePhase) { _, newPhase in
+            guard !project.isDeleted, project.modelContext != nil else { return }
             // Se l'app va in background o lo schermo viene bloccato, memorizza subito
             // i secondi lavorati per prevenire perdite dati in caso di sospensione o chiusura da iOS
             if newPhase == .background || newPhase == .inactive {
@@ -328,6 +343,8 @@ struct ProjectDetailView: View {
                         try? modelContext.save()
                     }
                 }
+            }
+        }
             }
         }
     }

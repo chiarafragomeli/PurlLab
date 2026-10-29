@@ -90,8 +90,9 @@ final class WatchConnectivityIOSManager: NSObject, WCSessionDelegate {
         let descriptor = FetchDescriptor<KnittingProject>(sortBy: [SortDescriptor(\.updatedAt, order: .reverse)])
         guard let projects = try? context.fetch(descriptor) else { return }
         
-        let summaries: [WatchProjectSummary] = projects.map { p in
-            buildProjectSummary(for: p)
+        let summaries: [WatchProjectSummary] = projects.compactMap { p in
+            guard !p.isDeleted, p.modelContext != nil else { return nil }
+            return buildProjectSummary(for: p)
         }
         
         let effectiveActiveId = activeProjectId?.uuidString ?? summaries.first?.id
@@ -156,8 +157,8 @@ final class WatchConnectivityIOSManager: NSObject, WCSessionDelegate {
             canGoNext: activeStepIdx < max(0, sortedSteps.count - 1),
             totalStitchesWorked: p.totalStitchesWorked,
             totalRowsWorked: p.totalGuideRowsWorked,
-            extraCounterLabels: activeStep?.extraCounterLabels ?? [],
-            extraCounterValues: activeStep?.extraCounterValues ?? []
+            extraCounterLabels: activeStep?.safeExtraCounterLabels ?? [],
+            extraCounterValues: activeStep?.safeExtraCounterValues ?? []
         )
     }
     
