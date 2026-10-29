@@ -144,16 +144,6 @@ struct GuideView: View {
                             .padding(.top, 4)
                         }
                         
-                        // Selettore Modalità Scheda / Elenco Sezioni
-                        Picker("Modalità", selection: $displayMode) {
-                            Text(GuideDisplayMode.card.rawValue).tag(GuideDisplayMode.card)
-                            Text(GuideDisplayMode.list.rawValue).tag(GuideDisplayMode.list)
-                        }
-                        .pickerStyle(.segmented)
-                        .padding(.horizontal)
-                        .padding(.top, 8)
-                        .padding(.bottom, 10)
-                        
                         if displayMode == .card {
                             // Modalità Scheda Singola (Focus Mode)
                             GuideSingleCardView(
@@ -170,54 +160,88 @@ struct GuideView: View {
                                 },
                                 onOpenGaugeSheet: {
                                     showingGaugeSheet = true
+                                },
+                                onToggleOutline: {
+                                    withAnimation(.easeInOut(duration: 0.2)) {
+                                        displayMode = .list
+                                    }
                                 }
                             )
                         } else {
                             // Modalità Elenco Completo con gestione Sezioni
-                            List {
-                                ForEach(orderedSections) { group in
-                                    Section {
-                                        ForEach(group.steps) { step in
-                                            GuideStepRow(
-                                                step: step,
-                                                onNavigateToPage: onSelectPdfPage,
-                                                onJumpToCard: {
-                                                    if let idx = sortedSteps.firstIndex(where: { $0.id == step.id }) {
-                                                        currentStepIndex = idx
-                                                        displayMode = .card
+                            VStack(spacing: 0) {
+                                HStack {
+                                    Text("Indice Sezioni e Schede")
+                                        .font(.subheadline.bold())
+                                        .foregroundColor(.secondary)
+                                    Spacer()
+                                    Button {
+                                        withAnimation(.easeInOut(duration: 0.2)) {
+                                            displayMode = .card
+                                        }
+                                    } label: {
+                                        HStack(spacing: 4) {
+                                            Image(systemName: "rectangle.portrait.fill")
+                                            Text("Torna alla Scheda")
+                                        }
+                                        .font(.caption.bold())
+                                        .foregroundColor(.white)
+                                        .padding(.horizontal, 12)
+                                        .padding(.vertical, 6)
+                                        .background(Color.accentColor)
+                                        .clipShape(Capsule())
+                                    }
+                                }
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 8)
+                                
+                                List {
+                                    ForEach(orderedSections) { group in
+                                        Section {
+                                            ForEach(group.steps) { step in
+                                                GuideStepRow(
+                                                    step: step,
+                                                    onNavigateToPage: onSelectPdfPage,
+                                                    onJumpToCard: {
+                                                        if let idx = sortedSteps.firstIndex(where: { $0.id == step.id }) {
+                                                            currentStepIndex = idx
+                                                            withAnimation(.easeInOut(duration: 0.2)) {
+                                                                displayMode = .card
+                                                            }
+                                                        }
+                                                    },
+                                                    onDelete: {
+                                                        deleteStep(step)
                                                     }
-                                                },
-                                                onDelete: {
-                                                    deleteStep(step)
-                                                }
-                                            )
-                                        }
-                                        .onDelete { indexSet in
-                                            deleteStepsFromGroup(indexSet, in: group)
-                                        }
-                                    } header: {
-                                        HStack {
-                                            Text(group.title)
-                                                .font(.headline)
-                                            Spacer()
-                                            Menu {
-                                                Button(role: .destructive) {
-                                                    sectionToDelete = group.title
-                                                    showingDeleteSectionAlert = true
+                                                )
+                                            }
+                                            .onDelete { indexSet in
+                                                deleteStepsFromGroup(indexSet, in: group)
+                                            }
+                                        } header: {
+                                            HStack {
+                                                Text(group.title)
+                                                    .font(.headline)
+                                                Spacer()
+                                                Menu {
+                                                    Button(role: .destructive) {
+                                                        sectionToDelete = group.title
+                                                        showingDeleteSectionAlert = true
+                                                    } label: {
+                                                        Label("Elimina Sezione '\(group.title)'", systemImage: "trash")
+                                                    }
                                                 } label: {
-                                                    Label("Elimina Sezione '\(group.title)'", systemImage: "trash")
+                                                    Image(systemName: "ellipsis")
+                                                        .font(.caption)
+                                                        .foregroundColor(.secondary)
+                                                        .padding(6)
                                                 }
-                                            } label: {
-                                                Image(systemName: "ellipsis")
-                                                    .font(.caption)
-                                                    .foregroundColor(.secondary)
-                                                    .padding(6)
                                             }
                                         }
                                     }
                                 }
+                                .listStyle(.insetGrouped)
                             }
-                            .listStyle(.insetGrouped)
                         }
                     }
                 }
@@ -395,6 +419,7 @@ struct GuideSingleCardView: View {
     var onDeleteStep: (GuideStep) -> Void
     var onFinishGuide: () -> Void = {}
     var onOpenGaugeSheet: () -> Void = {}
+    var onToggleOutline: () -> Void = {}
     
     @State private var showingEditSheet = false
     private let haptic = UIImpactFeedbackGenerator(style: .medium)
@@ -437,73 +462,105 @@ struct GuideSingleCardView: View {
     
     var body: some View {
         if let step = currentStep {
-            VStack(spacing: 12) {
-                // Selettore rapido Sezione + Progresso
-                VStack(spacing: 8) {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 8) {
-                            ForEach(orderedSections) { group in
-                                let isCurrentSection = group.title == step.sectionTitle
-                                Button {
-                                    if let firstStep = group.steps.first,
-                                       let idx = steps.firstIndex(where: { $0.id == firstStep.id }) {
-                                        withAnimation(.easeInOut(duration: 0.2)) {
-                                            currentIndex = idx
+            VStack(spacing: 8) {
+                // Barra Compatta Sezioni + Progresso
+                VStack(spacing: 6) {
+                    HStack {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 6) {
+                                ForEach(orderedSections) { group in
+                                    let isCurrentSection = group.title == step.sectionTitle
+                                    Button {
+                                        if let firstStep = group.steps.first,
+                                           let idx = steps.firstIndex(where: { $0.id == firstStep.id }) {
+                                            withAnimation(.easeInOut(duration: 0.2)) {
+                                                currentIndex = idx
+                                            }
                                         }
+                                    } label: {
+                                        Text(group.title)
+                                            .font(.system(size: 13, weight: isCurrentSection ? .bold : .medium))
+                                            .padding(.horizontal, 12)
+                                            .padding(.vertical, 6)
+                                            .background(isCurrentSection ? Color.accentColor.opacity(0.15) : Color(.tertiarySystemFill))
+                                            .foregroundColor(isCurrentSection ? Color.accentColor : .secondary)
+                                            .clipShape(Capsule())
                                     }
-                                } label: {
-                                    Text(group.title)
-                                        .font(.caption.bold())
-                                        .padding(.horizontal, 12)
-                                        .padding(.vertical, 6)
-                                        .background(isCurrentSection ? Color.accentColor : Color(.systemGray5))
-                                        .foregroundColor(isCurrentSection ? .white : .secondary)
-                                        .clipShape(Capsule())
+                                    .buttonStyle(.plain)
                                 }
-                                .buttonStyle(.plain)
                             }
+                            .padding(.leading, 16)
                         }
-                        .padding(.horizontal, 16)
+                        
+                        Button {
+                            onToggleOutline()
+                        } label: {
+                            Image(systemName: "list.bullet")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundColor(.secondary)
+                                .padding(8)
+                                .background(Color(.tertiarySystemFill))
+                                .clipShape(Circle())
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.trailing, 16)
                     }
                     
                     HStack {
-                        Text(step.sectionTitle.uppercased())
-                            .font(.caption2.bold())
-                            .foregroundColor(.accentColor)
+                        ProgressView(value: Double(currentIndex + 1), total: Double(steps.count))
+                            .tint(Color.accentColor)
+                            .scaleEffect(y: 0.8)
                         
-                        Spacer()
-                        
-                        Text("Scheda \(currentIndex + 1) di \(steps.count)")
-                            .font(.caption2.monospacedDigit())
+                        Text("\(currentIndex + 1)/\(steps.count)")
+                            .font(.caption2.monospacedDigit().weight(.medium))
                             .foregroundColor(.secondary)
                     }
-                    .padding(.horizontal, 20)
-                    
-                    ProgressView(value: Double(currentIndex + 1), total: Double(steps.count))
-                        .tint(.accentColor)
-                        .padding(.horizontal, 20)
+                    .padding(.horizontal, 16)
                 }
+                .padding(.top, 4)
                 
                 // La Card Principale
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 16) {
-                        // Top Bar della Card: Tipo Step, Pagina PDF, Modifica
-                        HStack(spacing: 8) {
-                            stepTypeBadge(for: step)
+                    VStack(alignment: .leading, spacing: 14) {
+                        // Top Bar Essenziale della Card
+                        HStack(alignment: .center, spacing: 8) {
+                            if let rows = step.rowsPerRepeat, let reps = step.totalRepeats, rows > 0, reps > 0 {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "repeat")
+                                    Text("\(reps) × \(rows) ferri")
+                                }
+                                .font(.caption2.bold())
+                                .foregroundColor(.indigo)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(Color.indigo.opacity(0.12))
+                                .clipShape(Capsule())
+                            } else if step.stepType == "work_to_measure", let cm = step.targetMeasureCm {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "ruler")
+                                    Text("\(Int(cm)) cm")
+                                }
+                                .font(.caption2.bold())
+                                .foregroundColor(.purple)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(Color.purple.opacity(0.12))
+                                .clipShape(Capsule())
+                            }
                             
                             if let page = step.sourcePage {
                                 Button {
                                     onNavigateToPage(page)
                                 } label: {
-                                    HStack(spacing: 4) {
+                                    HStack(spacing: 3) {
                                         Image(systemName: "doc.text")
-                                        Text("Pag. \(page)")
+                                        Text("p. \(page)")
                                     }
-                                    .font(.caption.bold())
-                                    .padding(.horizontal, 9)
-                                    .padding(.vertical, 5)
-                                    .background(Color.orange.opacity(0.15))
+                                    .font(.caption2.bold())
                                     .foregroundColor(.orange)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                                    .background(Color.orange.opacity(0.12))
                                     .clipShape(Capsule())
                                 }
                                 .buttonStyle(.plain)
@@ -512,66 +569,38 @@ struct GuideSingleCardView: View {
                             Spacer()
                             
                             let isWatchActive = (WatchConnectivityIOSManager.shared.activeStepId == step.id)
-                            if isWatchActive {
-                                HStack(spacing: 4) {
-                                    Image(systemName: "applewatch")
-                                    Text("Attiva su Watch")
-                                }
-                                .font(.caption2.bold())
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 5)
-                                .background(Color.green.opacity(0.15))
-                                .foregroundColor(.green)
-                                .clipShape(Capsule())
-                            } else if step.hasCounter || (step.targetStepCount != nil && step.targetStepCount! > 0) {
+                            if step.hasCounter || (step.targetStepCount != nil && step.targetStepCount! > 0) {
                                 Button {
                                     let targetProject = project ?? step.project
                                     WatchConnectivityIOSManager.shared.setActiveStep(step, for: targetProject)
                                     let gen = UIImpactFeedbackGenerator(style: .medium)
                                     gen.impactOccurred()
                                 } label: {
-                                    HStack(spacing: 4) {
-                                        Image(systemName: "applewatch")
-                                        Text("Lavora su Watch")
-                                    }
-                                    .font(.caption2.bold())
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 5)
-                                    .background(Color(.systemGray5))
-                                    .foregroundColor(.secondary)
-                                    .clipShape(Capsule())
+                                    Image(systemName: "applewatch")
+                                        .font(.footnote.weight(isWatchActive ? .bold : .regular))
+                                        .foregroundColor(isWatchActive ? .green : .secondary)
+                                        .padding(6)
+                                        .background(isWatchActive ? Color.green.opacity(0.15) : Color(.tertiarySystemFill))
+                                        .clipShape(Circle())
                                 }
                                 .buttonStyle(.plain)
                             }
                             
                             if step.isCompleted {
-                                Menu {
-                                    Button {
-                                        step.isCompleted = false
-                                        step.completedAt = nil
-                                    } label: {
-                                        Label("Segna come da fare", systemImage: "arrow.uturn.backward")
-                                    }
-                                } label: {
-                                    Image(systemName: "checkmark.circle.fill")
-                                        .font(.title3)
-                                        .foregroundColor(.green)
-                                }
+                                Image(systemName: "checkmark.circle.fill")
+                                    .font(.subheadline)
+                                    .foregroundColor(.green)
                             }
                             
                             Button {
                                 showingEditSheet = true
                             } label: {
-                                HStack(spacing: 4) {
-                                    Image(systemName: "pencil")
-                                    Text("Modifica")
-                                }
-                                .font(.caption.bold())
-                                .foregroundColor(.secondary)
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 5)
-                                .background(Color(.systemGray5))
-                                .clipShape(Capsule())
+                                Image(systemName: "pencil")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                                    .padding(6)
+                                    .background(Color(.tertiarySystemFill))
+                                    .clipShape(Circle())
                             }
                             .buttonStyle(.plain)
                         }
@@ -579,44 +608,46 @@ struct GuideSingleCardView: View {
                         // Titolo della Scheda
                         if !step.title.isEmpty {
                             Text(step.title)
-                                .font(.system(size: 22, weight: .bold, design: .rounded))
+                                .font(.system(size: 20, weight: .bold, design: .rounded))
                                 .foregroundColor(.primary)
                         }
                         
                         // Badge Maglie Prima -> Dopo e Misura
-                        HStack(spacing: 10) {
-                            if let before = step.stitchCountBefore, let after = step.stitchCountAfter, before != after {
-                                let diff = after - before
-                                let diffStr = diff > 0 ? "+\(diff)" : "\(diff)"
-                                Label("\(before) → \(after) maglie (\(diffStr))", systemImage: "arrow.right.circle.fill")
-                                    .font(.caption.bold())
-                                    .foregroundColor(.blue)
-                                    .padding(.horizontal, 10)
-                                    .padding(.vertical, 6)
-                                    .background(Color.blue.opacity(0.12))
-                                    .clipShape(RoundedRectangle(cornerRadius: 8))
-                            } else if let sts = step.stitchCountAfter, sts > 0 {
-                                Label("\(sts) maglie sui ferri", systemImage: "number")
-                                    .font(.caption.bold())
-                                    .foregroundColor(.blue)
-                                    .padding(.horizontal, 10)
-                                    .padding(.vertical, 6)
-                                    .background(Color.blue.opacity(0.12))
-                                    .clipShape(RoundedRectangle(cornerRadius: 8))
-                            }
-                            
-                            if let measure = step.targetMeasureCm {
-                                Label("Misura: \(String(format: "%.0f", measure)) cm", systemImage: "ruler")
-                                    .font(.caption.bold())
-                                    .foregroundColor(.purple)
-                                    .padding(.horizontal, 10)
-                                    .padding(.vertical, 6)
-                                    .background(Color.purple.opacity(0.12))
-                                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                        if (step.stitchCountBefore != nil && step.stitchCountAfter != nil) || (step.stitchCountAfter != nil && step.stitchCountAfter! > 0) || step.targetMeasureCm != nil {
+                            HStack(spacing: 8) {
+                                if let before = step.stitchCountBefore, let after = step.stitchCountAfter, before != after {
+                                    let diff = after - before
+                                    let diffStr = diff > 0 ? "+\(diff)" : "\(diff)"
+                                    Label("\(before) → \(after) maglie (\(diffStr))", systemImage: "arrow.right.circle.fill")
+                                        .font(.caption.bold())
+                                        .foregroundColor(.blue)
+                                        .padding(.horizontal, 9)
+                                        .padding(.vertical, 5)
+                                        .background(Color.blue.opacity(0.1))
+                                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                                } else if let sts = step.stitchCountAfter, sts > 0 {
+                                    Label("\(sts) maglie sui ferri", systemImage: "number")
+                                        .font(.caption.bold())
+                                        .foregroundColor(.blue)
+                                        .padding(.horizontal, 9)
+                                        .padding(.vertical, 5)
+                                        .background(Color.blue.opacity(0.1))
+                                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                                }
+                                
+                                if let measure = step.targetMeasureCm {
+                                    Label("Misura: \(String(format: "%.0f", measure)) cm", systemImage: "ruler")
+                                        .font(.caption.bold())
+                                        .foregroundColor(.purple)
+                                        .padding(.horizontal, 9)
+                                        .padding(.vertical, 5)
+                                        .background(Color.purple.opacity(0.1))
+                                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                                }
                             }
                         }
                         
-                        // CONTATORE INTEGRATO (in primo piano per guidare i passaggi)
+                        // CONTATORE INTEGRATO
                         if step.hasCounter {
                             CardCounterBoxView(step: step)
                         }
@@ -627,102 +658,108 @@ struct GuideSingleCardView: View {
                             .lineSpacing(5)
                             .foregroundColor(.primary)
                         
-                        // Banner interattivo Campione nella card Preparazione / Campione
+                        // Banner Compatto Campione nella card Preparazione / Campione
                         if step.sectionTitle.localizedCaseInsensitiveContains("Preparazione") || step.instructionText.localizedCaseInsensitiveContains("Campione") {
                             let isRecalc = (project?.isGaugeRecalculated ?? false)
                             Button {
                                 onOpenGaugeSheet()
                             } label: {
-                                HStack(spacing: 12) {
-                                    Image(systemName: isRecalc ? "gauge.with.needle.fill" : "gauge.with.needle")
-                                        .font(.title2)
+                                HStack(spacing: 10) {
+                                    Image(systemName: isRecalc ? "gauge.with.needle.fill" : "sparkles")
+                                        .font(.subheadline)
                                         .foregroundColor(isRecalc ? .indigo : .accentColor)
+                                    
                                     VStack(alignment: .leading, spacing: 2) {
-                                        if isRecalc {
-                                            Text("Guida ricalibrata sul tuo campione")
-                                                .font(.subheadline.bold())
-                                                .foregroundColor(.primary)
-                                            Text("I numeri delle istruzioni sono adattati alla tua tensione reale")
-                                                .font(.caption)
-                                                .foregroundColor(.secondary)
-                                        } else {
-                                            Text("Il tuo campione è diverso da quello del pattern?")
-                                                .font(.subheadline.bold())
-                                                .foregroundColor(.primary)
-                                            Text("Ricalcola tutto il pattern con l'AI mantenendo perfetta la taglia")
-                                                .font(.caption)
-                                                .foregroundColor(.secondary)
-                                        }
+                                        Text(isRecalc ? "Guida ricalibrata sul tuo campione" : "Il tuo campione è diverso da quello del pattern?")
+                                            .font(.footnote.bold())
+                                            .foregroundColor(.primary)
+                                        Text(isRecalc ? "I valori sono adattati alla tua tensione" : "Tocca per ricalibrare la guida con l'AI")
+                                            .font(.caption2)
+                                            .foregroundColor(.secondary)
                                     }
+                                    
                                     Spacer()
-                                    Image(systemName: isRecalc ? "checkmark.circle.fill" : "sparkles")
-                                        .foregroundColor(isRecalc ? .indigo : .accentColor)
+                                    
+                                    Image(systemName: "chevron.right")
+                                        .font(.caption2.bold())
+                                        .foregroundColor(.secondary)
                                 }
-                                .padding(12)
-                                .background(isRecalc ? Color.indigo.opacity(0.12) : Color.accentColor.opacity(0.12))
+                                .padding(10)
+                                .background(Color(.tertiarySystemFill))
                                 .cornerRadius(12)
                             }
                             .buttonStyle(.plain)
-                            .padding(.vertical, 4)
+                            .padding(.vertical, 2)
                         }
                         
-                        // SUB-STEPS (Ferri o Giri del Ciclo Ripetuto, con evidenziazione del ferro attivo)
+                        // SUB-STEPS (Checklist essenziale con indicatore attivo)
                         if !step.subSteps.isEmpty {
-                            VStack(alignment: .leading, spacing: 8) {
-                                HStack {
+                            VStack(alignment: .leading, spacing: 6) {
+                                HStack(spacing: 6) {
                                     Image(systemName: step.rowsPerRepeat != nil ? "repeat" : "list.number")
-                                        .foregroundColor(.accentColor)
-                                    Text(step.rowsPerRepeat != nil ? "Passaggi del Ciclo (Evidenziato il ferro attuale):" : "Dettaglio Passaggi:")
-                                        .font(.subheadline.bold())
+                                        .font(.caption.bold())
+                                        .foregroundColor(.secondary)
+                                    Text(step.rowsPerRepeat != nil ? "Passaggi del Ciclo" : "Dettaglio Passaggi")
+                                        .font(.footnote.bold())
                                         .foregroundColor(.secondary)
                                 }
+                                .padding(.bottom, 2)
                                 
                                 ForEach(Array(step.subSteps.enumerated()), id: \.offset) { idx, subText in
                                     let isActive = isSubStepActive(index: idx, for: step)
-                                    VStack(alignment: .leading, spacing: 4) {
+                                    HStack(alignment: .top, spacing: 10) {
                                         if isActive {
-                                            HStack(spacing: 4) {
-                                                Image(systemName: "hand.point.right.fill")
-                                                Text("DA LAVORARE ORA")
-                                            }
-                                            .font(.caption2.bold())
-                                            .foregroundColor(.white)
-                                            .padding(.horizontal, 8)
-                                            .padding(.vertical, 3)
-                                            .background(Color.accentColor)
-                                            .clipShape(Capsule())
+                                            Circle()
+                                                .fill(Color.accentColor)
+                                                .frame(width: 8, height: 8)
+                                                .padding(.top, 6)
+                                        } else {
+                                            Circle()
+                                                .fill(Color.secondary.opacity(0.35))
+                                                .frame(width: 6, height: 6)
+                                                .padding(.top, 7)
                                         }
                                         
-                                        Text(subText)
-                                            .font(.system(size: 15, weight: isActive ? .semibold : .regular, design: .rounded))
-                                            .foregroundColor(.primary)
-                                            .lineSpacing(3)
-                                            .fixedSize(horizontal: false, vertical: true)
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            if isActive {
+                                                Text("DA LAVORARE ORA")
+                                                    .font(.system(size: 10, weight: .bold))
+                                                    .foregroundColor(Color.accentColor)
+                                            }
+                                            Text(subText)
+                                                .font(.system(size: 15, weight: isActive ? .semibold : .regular, design: .rounded))
+                                                .foregroundColor(.primary)
+                                                .lineSpacing(3)
+                                                .fixedSize(horizontal: false, vertical: true)
+                                        }
+                                        Spacer()
                                     }
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .padding(12)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 8)
                                     .background(
-                                        RoundedRectangle(cornerRadius: 12)
-                                            .fill(isActive ? Color.accentColor.opacity(0.14) : Color(.tertiarySystemGroupedBackground))
+                                        RoundedRectangle(cornerRadius: 10)
+                                            .fill(isActive ? Color.accentColor.opacity(0.1) : Color(.tertiarySystemFill))
                                     )
                                     .overlay(
-                                        RoundedRectangle(cornerRadius: 12)
-                                            .stroke(isActive ? Color.accentColor : Color.clear, lineWidth: 2)
+                                        RoundedRectangle(cornerRadius: 10)
+                                            .stroke(isActive ? Color.accentColor.opacity(0.35) : Color.clear, lineWidth: 1)
                                     )
                                 }
                             }
                         }
                         
-                        // REPEAT VARIATIONS (es. avanzamento ferri accorciati per ciascuna ripetizione)
+                        // REPEAT VARIATIONS
                         if !step.repeatVariations.isEmpty {
-                            VStack(alignment: .leading, spacing: 8) {
-                                HStack {
+                            VStack(alignment: .leading, spacing: 6) {
+                                HStack(spacing: 6) {
                                     Image(systemName: "sparkles")
+                                        .font(.caption.bold())
                                         .foregroundColor(.indigo)
-                                    Text("Dove girare in ogni Ripetizione:")
-                                        .font(.subheadline.bold())
+                                    Text("Ripetizioni:")
+                                        .font(.footnote.bold())
                                         .foregroundColor(.secondary)
                                 }
+                                .padding(.bottom, 2)
                                 
                                 ForEach(Array(step.repeatVariations.enumerated()), id: \.offset) { idx, varText in
                                     let isCurrentVar = isVariationActive(index: idx, for: step)
@@ -731,13 +768,13 @@ struct GuideSingleCardView: View {
                                     HStack(alignment: .top, spacing: 8) {
                                         Image(systemName: isPastVar ? "checkmark.circle.fill" : (isCurrentVar ? "arrow.right.circle.fill" : "circle"))
                                             .foregroundColor(isPastVar ? .green : (isCurrentVar ? .indigo : .secondary))
-                                            .font(.subheadline)
+                                            .font(.caption)
                                             .padding(.top, 2)
                                         
-                                        VStack(alignment: .leading, spacing: 3) {
+                                        VStack(alignment: .leading, spacing: 2) {
                                             if isCurrentVar {
-                                                Text("RIPETIZIONE IN CORSO")
-                                                    .font(.caption2.bold())
+                                                Text("IN CORSO")
+                                                    .font(.system(size: 10, weight: .bold))
                                                     .foregroundColor(.indigo)
                                             }
                                             Text(varText)
@@ -746,30 +783,24 @@ struct GuideSingleCardView: View {
                                                 .strikethrough(isPastVar, color: .secondary)
                                         }
                                     }
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .padding(10)
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 6)
                                     .background(
-                                        RoundedRectangle(cornerRadius: 10)
-                                            .fill(isCurrentVar ? Color.indigo.opacity(0.12) : Color(.tertiarySystemGroupedBackground))
-                                    )
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 10)
-                                            .stroke(isCurrentVar ? Color.indigo : Color.clear, lineWidth: 1.5)
+                                        RoundedRectangle(cornerRadius: 8)
+                                            .fill(isCurrentVar ? Color.indigo.opacity(0.1) : Color(.tertiarySystemFill))
                                     )
                                 }
                             }
                         }
                     }
-                    .padding(20)
+                    .padding(18)
                     .background(Color(.secondarySystemGroupedBackground))
-                    .cornerRadius(24)
-                    .shadow(color: Color.black.opacity(0.06), radius: 12, x: 0, y: 4)
+                    .cornerRadius(20)
+                    .shadow(color: Color.black.opacity(0.04), radius: 8, x: 0, y: 2)
                     .padding(.horizontal, 16)
                 }
                 
-                // Barra di Navigazione Inferiore
-                // Le frecce servono solo a sfogliare (NON segnano la scheda come completata).
-                // Il pulsante centrale segna la scheda come completata e passa alla successiva.
+                // Barra di Navigazione Inferiore della Scheda
                 HStack(spacing: 10) {
                     Button {
                         if currentIndex > 0 {
@@ -779,11 +810,11 @@ struct GuideSingleCardView: View {
                         }
                     } label: {
                         Image(systemName: "chevron.left")
-                            .font(.headline.bold())
-                            .frame(width: 52, height: 50)
-                            .background(Color(.systemGray6))
-                            .foregroundColor(currentIndex > 0 ? .primary : .secondary.opacity(0.5))
-                            .clipShape(RoundedRectangle(cornerRadius: 16))
+                            .font(.body.bold())
+                            .frame(width: 44, height: 44)
+                            .background(Color(.tertiarySystemFill))
+                            .foregroundColor(currentIndex > 0 ? .primary : .secondary.opacity(0.35))
+                            .clipShape(Circle())
                     }
                     .disabled(currentIndex == 0)
                     
@@ -792,7 +823,6 @@ struct GuideSingleCardView: View {
                         haptic.impactOccurred()
                         TimerManager.shared.registerInteraction()
                         if step.isCompleted && !isLast {
-                            // Scheda già completata: si limita ad avanzare
                             withAnimation(.easeInOut(duration: 0.25)) { currentIndex += 1 }
                             return
                         }
@@ -828,13 +858,13 @@ struct GuideSingleCardView: View {
                                 Text("Completa scheda")
                             }
                         }
-                        .font(.headline.bold())
+                        .font(.subheadline.bold())
                         .frame(maxWidth: .infinity)
-                        .frame(height: 50)
+                        .frame(height: 44)
                         .background(step.isCompleted && !isLast ? Color.green : Color.accentColor)
                         .foregroundColor(.white)
-                        .clipShape(RoundedRectangle(cornerRadius: 16))
-                        .shadow(color: Color.accentColor.opacity(0.3), radius: 6, x: 0, y: 3)
+                        .clipShape(Capsule())
+                        .shadow(color: (step.isCompleted && !isLast ? Color.green : Color.accentColor).opacity(0.2), radius: 4, x: 0, y: 2)
                     }
                     
                     Button {
@@ -845,71 +875,22 @@ struct GuideSingleCardView: View {
                         }
                     } label: {
                         Image(systemName: "chevron.right")
-                            .font(.headline.bold())
-                            .frame(width: 52, height: 50)
-                            .background(Color(.systemGray6))
-                            .foregroundColor(!isLast ? .primary : .secondary.opacity(0.5))
-                            .clipShape(RoundedRectangle(cornerRadius: 16))
+                            .font(.body.bold())
+                            .frame(width: 44, height: 44)
+                            .background(Color(.tertiarySystemFill))
+                            .foregroundColor(!isLast ? .primary : .secondary.opacity(0.35))
+                            .clipShape(Circle())
                     }
                     .disabled(isLast)
                 }
                 .padding(.horizontal, 16)
-                .padding(.bottom, 10)
+                .padding(.bottom, 4)
             }
             .sheet(isPresented: $showingEditSheet) {
                 EditGuideStepSheet(step: step, onDelete: {
                     onDeleteStep(step)
                 })
             }
-        }
-    }
-    
-    @ViewBuilder
-    private func stepTypeBadge(for step: GuideStep) -> some View {
-        if let rows = step.rowsPerRepeat, let reps = step.totalRepeats, rows > 0, reps > 0 {
-            HStack(spacing: 4) {
-                Image(systemName: "repeat")
-                Text("PATTERN RIPETUTO: \(reps) × \(rows) = \(reps * rows)")
-            }
-            .font(.caption2.bold())
-            .padding(.horizontal, 9)
-            .padding(.vertical, 5)
-            .background(Color.indigo.opacity(0.15))
-            .foregroundColor(.indigo)
-            .clipShape(Capsule())
-        } else if step.stepType == "work_to_measure" {
-            HStack(spacing: 4) {
-                Image(systemName: "ruler")
-                Text("A MISURA / GIRI")
-            }
-            .font(.caption2.bold())
-            .padding(.horizontal, 9)
-            .padding(.vertical, 5)
-            .background(Color.purple.opacity(0.15))
-            .foregroundColor(.purple)
-            .clipShape(Capsule())
-        } else if step.stepType == "info" || !step.hasCounter {
-            HStack(spacing: 4) {
-                Image(systemName: "info.circle")
-                Text("ISTRUZIONE / SETUP")
-            }
-            .font(.caption2.bold())
-            .padding(.horizontal, 9)
-            .padding(.vertical, 5)
-            .background(Color.secondary.opacity(0.15))
-            .foregroundColor(.secondary)
-            .clipShape(Capsule())
-        } else {
-            HStack(spacing: 4) {
-                Image(systemName: "plus.forwardslash.minus")
-                Text("AZIONE CON CONTATORE")
-            }
-            .font(.caption2.bold())
-            .padding(.horizontal, 9)
-            .padding(.vertical, 5)
-            .background(Color.green.opacity(0.15))
-            .foregroundColor(.green)
-            .clipShape(Capsule())
         }
     }
 }

@@ -228,10 +228,6 @@ struct ActiveSectionCounterCard: View {
         .padding(18)
         .background(Color(.secondarySystemGroupedBackground))
         .cornerRadius(20)
-        .overlay(
-            RoundedRectangle(cornerRadius: 20)
-                .stroke(Color.green.opacity(0.3), lineWidth: 1.5)
-        )
         .shadow(color: Color.black.opacity(0.04), radius: 8, x: 0, y: 2)
     }
     
@@ -239,14 +235,13 @@ struct ActiveSectionCounterCard: View {
     private var headerRow: some View {
         HStack {
             VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 4) {
-                    Image(systemName: "applewatch.radiowaves.left.and.right")
-                        .font(.caption)
-                        .foregroundColor(.green)
-                    Text("SEZIONE ATTIVA (IN SYNC)")
-                        .font(.caption2.bold())
-                        .foregroundColor(.green)
+                HStack(spacing: 5) {
+                    Image(systemName: "applewatch")
+                        .font(.caption2)
+                    Text("In sincronizzazione")
+                        .font(.caption2.weight(.medium))
                 }
+                .foregroundColor(.secondary)
                 
                 Text(step.sectionTitle)
                     .font(.headline)

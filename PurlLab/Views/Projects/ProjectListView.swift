@@ -61,11 +61,6 @@ struct ProjectListView: View {
                                 .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 8, trailing: 16))
                                 .listRowBackground(Color.clear)
                                 .listRowSeparator(.hidden)
-                            } header: {
-                                Text("In Lavorazione")
-                                    .font(.footnote.bold())
-                                    .foregroundColor(.secondary)
-                                    .textCase(.uppercase)
                             }
                         }
                         
@@ -74,97 +69,80 @@ struct ProjectListView: View {
                                 Button {
                                     showingFilePicker = true
                                 } label: {
-                                    HStack(spacing: 8) {
+                                    HStack(spacing: 6) {
                                         Image(systemName: "doc.badge.plus")
-                                            .font(.headline)
+                                            .font(.subheadline.weight(.semibold))
                                             .foregroundColor(.accentColor)
-                                        VStack(alignment: .leading, spacing: 2) {
-                                            Text("Importa PDF")
-                                                .font(.subheadline.bold())
-                                                .foregroundColor(.primary)
-                                            Text("Pattern da File")
-                                                .font(.caption2)
-                                                .foregroundColor(.secondary)
-                                        }
-                                        Spacer()
+                                        Text("Importa PDF")
+                                            .font(.subheadline.weight(.semibold))
+                                            .foregroundColor(.primary)
                                     }
-                                    .padding(12)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 10)
                                     .background(Color(.secondarySystemGroupedBackground))
-                                    .cornerRadius(14)
+                                    .clipShape(RoundedRectangle(cornerRadius: 12))
                                 }
                                 .buttonStyle(.plain)
                                 
                                 Button {
                                     showingManualNewProject = true
                                 } label: {
-                                    HStack(spacing: 8) {
-                                        Image(systemName: "plus.circle")
-                                            .font(.headline)
+                                    HStack(spacing: 6) {
+                                        Image(systemName: "plus")
+                                            .font(.subheadline.weight(.bold))
                                             .foregroundColor(.indigo)
-                                        VStack(alignment: .leading, spacing: 2) {
-                                            Text("Nuovo Progetto")
-                                                .font(.subheadline.bold())
-                                                .foregroundColor(.primary)
-                                            Text("Manuale / Vuoto")
-                                                .font(.caption2)
-                                                .foregroundColor(.secondary)
-                                        }
-                                        Spacer()
+                                        Text("Nuovo Progetto")
+                                            .font(.subheadline.weight(.semibold))
+                                            .foregroundColor(.primary)
                                     }
-                                    .padding(12)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 10)
                                     .background(Color(.secondarySystemGroupedBackground))
-                                    .cornerRadius(14)
+                                    .clipShape(RoundedRectangle(cornerRadius: 12))
                                 }
                                 .buttonStyle(.plain)
                             }
                             .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 8, trailing: 16))
                             .listRowBackground(Color.clear)
                             .listRowSeparator(.hidden)
-                        } header: {
-                            Text("Azioni Rapide")
-                                .font(.footnote.bold())
-                                .foregroundColor(.secondary)
-                                .textCase(.uppercase)
                         }
                         
-                        Section {
-                            ForEach(projects) { project in
-                                NavigationLink(value: project.id) {
-                                    ProjectRowView(project: project)
-                                }
-                                .swipeActions(edge: .leading) {
-                                    Button {
-                                        projectToRename = project
-                                        renameTitle = project.title
-                                        showingRenameAlert = true
-                                    } label: {
-                                        Label("Rinomina", systemImage: "pencil")
+                        let otherProjects = projects.filter { $0.id != activeProjectToResume?.id }
+                        if !otherProjects.isEmpty {
+                            Section("Altri Progetti (\(otherProjects.count))") {
+                                ForEach(otherProjects) { project in
+                                    NavigationLink(value: project.id) {
+                                        ProjectRowView(project: project)
                                     }
-                                    .tint(.indigo)
-                                }
-                                .contextMenu {
-                                    Button {
-                                        projectToRename = project
-                                        renameTitle = project.title
-                                        showingRenameAlert = true
-                                    } label: {
-                                        Label("Rinomina Progetto", systemImage: "pencil")
-                                    }
-                                    Button(role: .destructive) {
-                                        if let idx = projects.firstIndex(where: { $0.id == project.id }) {
-                                            deleteProjects(at: IndexSet(integer: idx))
+                                    .swipeActions(edge: .leading) {
+                                        Button {
+                                            projectToRename = project
+                                            renameTitle = project.title
+                                            showingRenameAlert = true
+                                        } label: {
+                                            Label("Rinomina", systemImage: "pencil")
                                         }
-                                    } label: {
-                                        Label("Elimina Progetto", systemImage: "trash")
+                                        .tint(.indigo)
+                                    }
+                                    .contextMenu {
+                                        Button {
+                                            projectToRename = project
+                                            renameTitle = project.title
+                                            showingRenameAlert = true
+                                        } label: {
+                                            Label("Rinomina Progetto", systemImage: "pencil")
+                                        }
+                                        Button(role: .destructive) {
+                                            if let idx = projects.firstIndex(where: { $0.id == project.id }) {
+                                                deleteProjects(at: IndexSet(integer: idx))
+                                            }
+                                        } label: {
+                                            Label("Elimina Progetto", systemImage: "trash")
+                                        }
                                     }
                                 }
+                                .onDelete(perform: deleteProjects)
                             }
-                            .onDelete(perform: deleteProjects)
-                        } header: {
-                            Text("Tutti i Progetti (\(projects.count))")
-                                .font(.footnote.bold())
-                                .foregroundColor(.secondary)
-                                .textCase(.uppercase)
                         }
                     }
                     .listStyle(.insetGrouped)
@@ -399,32 +377,23 @@ struct ResumeProjectHeroCard: View {
         return Double(completed) / Double(total)
     }
     
-    private var completedStepsCount: Int {
-        project.guideSteps.filter { $0.isCompleted }.count
-    }
-    
+
     var body: some View {
         Button {
             haptic.impactOccurred()
             onResume()
         } label: {
-            VStack(alignment: .leading, spacing: 12) {
-                // Top row: Badge in lavorazione & tempo
-                HStack {
-                    HStack(spacing: 6) {
+            VStack(alignment: .leading, spacing: 14) {
+                // Header riga: Stato e tempo
+                HStack(alignment: .center) {
+                    HStack(spacing: 5) {
                         Circle()
-                            .fill(Color.green)
-                            .frame(width: 8, height: 8)
-                            .shadow(color: Color.green.opacity(0.8), radius: 3)
-                        
-                        Text("IN LAVORAZIONE")
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundColor(.green)
+                            .fill(Color.accentColor)
+                            .frame(width: 7, height: 7)
+                        Text("In Lavorazione")
+                            .font(.caption.weight(.semibold))
+                            .foregroundColor(.accentColor)
                     }
-                    .padding(.horizontal, 9)
-                    .padding(.vertical, 4)
-                    .background(Color.green.opacity(0.12))
-                    .clipShape(Capsule())
                     
                     Spacer()
                     
@@ -433,101 +402,84 @@ struct ResumeProjectHeroCard: View {
                             Image(systemName: "clock")
                             Text(TimerManager.shared.formatTime(project.totalSecondsWorked))
                         }
-                        .font(.caption2.monospacedDigit().bold())
+                        .font(.caption.monospacedDigit())
                         .foregroundColor(.secondary)
                     }
                 }
                 
-                // Titolo del progetto e designer
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(project.title)
-                        .font(.title3.bold())
-                        .foregroundColor(.primary)
-                        .lineLimit(1)
-                    
-                    HStack(spacing: 6) {
-                        if !project.designer.isEmpty {
-                            Text(project.designer)
-                                .font(.subheadline)
-                                .foregroundColor(.secondary)
-                        }
+                // Titolo e dettagli progetto
+                HStack(alignment: .bottom) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(project.title)
+                            .font(.title3.bold())
+                            .foregroundColor(.primary)
+                            .lineLimit(1)
                         
-                        if !project.selectedSize.isEmpty {
-                            Text("• Taglia \(project.selectedSize)")
-                                .font(.subheadline.bold())
-                                .foregroundColor(.accentColor)
-                        }
-                    }
-                }
-                
-                // Sezione e step attivo
-                if let step = activeStep {
-                    VStack(alignment: .leading, spacing: 6) {
                         HStack(spacing: 6) {
-                            Image(systemName: "hand.point.right.fill")
-                                .font(.caption)
-                                .foregroundColor(.accentColor)
-                            Text(step.sectionTitle.uppercased())
-                                .font(.caption.bold())
-                                .foregroundColor(.accentColor)
-                            Spacer()
-                            Text("Scheda \(step.orderIndex + 1) di \(project.guideSteps.count)")
-                                .font(.caption2.monospacedDigit())
-                                .foregroundColor(.secondary)
-                        }
-                        
-                        if !step.title.isEmpty {
-                            Text(step.title)
-                                .font(.footnote.weight(.medium))
-                                .foregroundColor(.primary)
-                                .lineLimit(1)
+                            if !project.designer.isEmpty {
+                                Text(project.designer)
+                                    .font(.subheadline)
+                                    .foregroundColor(.secondary)
+                            }
+                            if !project.selectedSize.isEmpty {
+                                Text("• Taglia \(project.selectedSize)")
+                                    .font(.subheadline)
+                                    .foregroundColor(.secondary)
+                            }
                         }
                     }
-                    .padding(10)
-                    .background(Color(.tertiarySystemFill))
-                    .cornerRadius(10)
-                }
-                
-                // Barra di avanzamento
-                if !project.guideSteps.isEmpty {
-                    VStack(spacing: 4) {
-                        ProgressView(value: progressPercentage)
-                            .tint(.accentColor)
-                        
-                        HStack {
-                            Text("\(completedStepsCount) di \(project.guideSteps.count) schede completate")
-                                .font(.caption2)
-                                .foregroundColor(.secondary)
-                            Spacer()
-                            Text(String(format: "%.0f%%", progressPercentage * 100))
-                                .font(.caption2.bold())
-                                .foregroundColor(.accentColor)
-                        }
-                    }
-                }
-                
-                // Bottone Continua
-                HStack {
-                    Text("Continua a lavorare")
-                        .font(.subheadline.bold())
+                    
                     Spacer()
-                    Image(systemName: "chevron.right")
-                        .font(.footnote.bold())
+                    
+                    // Callout discreto Riprendi
+                    HStack(spacing: 4) {
+                        Text("Riprendi")
+                            .font(.subheadline.weight(.semibold))
+                        Image(systemName: "chevron.right")
+                            .font(.caption.weight(.bold))
+                    }
+                    .foregroundColor(.accentColor)
                 }
-                .foregroundColor(.white)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 10)
-                .background(Color.accentColor)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
+                
+                // Sezione / Scheda attiva & avanzamento
+                if let step = activeStep {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Divider()
+                            .opacity(0.6)
+                        
+                        HStack(alignment: .center) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(step.sectionTitle)
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundColor(.secondary)
+                                if !step.title.isEmpty {
+                                    Text(step.title)
+                                        .font(.subheadline)
+                                        .foregroundColor(.primary)
+                                        .lineLimit(1)
+                                }
+                            }
+                            
+                            Spacer()
+                            
+                            if !project.guideSteps.isEmpty {
+                                Text("Scheda \(step.orderIndex + 1)/\(project.guideSteps.count)")
+                                    .font(.caption.monospacedDigit())
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        
+                        if !project.guideSteps.isEmpty {
+                            ProgressView(value: progressPercentage)
+                                .tint(.accentColor)
+                        }
+                    }
+                }
             }
             .padding(16)
             .background(Color(.secondarySystemGroupedBackground))
-            .clipShape(RoundedRectangle(cornerRadius: 18))
-            .shadow(color: Color.black.opacity(0.06), radius: 10, x: 0, y: 3)
-            .overlay(
-                RoundedRectangle(cornerRadius: 18)
-                    .stroke(Color.accentColor.opacity(0.25), lineWidth: 1)
-            )
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .shadow(color: Color.black.opacity(0.04), radius: 8, x: 0, y: 2)
         }
         .buttonStyle(.plain)
     }
