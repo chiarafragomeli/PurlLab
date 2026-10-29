@@ -423,7 +423,7 @@ struct GuideSingleCardView: View {
     var onOpenGaugeSheet: () -> Void = {}
     var onToggleOutline: () -> Void = {}
     
-    @State private var showingEditSheet = false
+    @State private var stepToEdit: GuideStep? = nil
     private let haptic = UIImpactFeedbackGenerator(style: .medium)
     private let successHaptic = UINotificationFeedbackGenerator()
     
@@ -601,16 +601,19 @@ struct GuideSingleCardView: View {
                             }
                             
                             Button {
-                                showingEditSheet = true
+                                haptic.impactOccurred()
+                                stepToEdit = step
                             } label: {
                                 Image(systemName: "pencil")
-                                    .font(.caption)
+                                    .font(.system(size: 13, weight: .semibold))
                                     .foregroundColor(.secondary)
-                                    .padding(6)
+                                    .frame(width: 32, height: 32)
                                     .background(Color(.tertiarySystemFill))
                                     .clipShape(Circle())
                             }
                             .buttonStyle(.plain)
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
                         }
                         
                         // Titolo della Scheda
@@ -620,38 +623,16 @@ struct GuideSingleCardView: View {
                                 .foregroundColor(.primary)
                         }
                         
-                        // Badge Maglie Prima -> Dopo e Misura
-                        if (step.stitchCountBefore != nil && step.stitchCountAfter != nil) || (step.stitchCountAfter != nil && step.stitchCountAfter! > 0) || step.targetMeasureCm != nil {
+                        // Badge Misura (se presente)
+                        if let measure = step.targetMeasureCm {
                             HStack(spacing: 8) {
-                                if let before = step.stitchCountBefore, let after = step.stitchCountAfter, before != after {
-                                    let diff = after - before
-                                    let diffStr = diff > 0 ? "+\(diff)" : "\(diff)"
-                                    Label("\(before) → \(after) maglie (\(diffStr))", systemImage: "arrow.right.circle.fill")
-                                        .font(.caption.bold())
-                                        .foregroundColor(.blue)
-                                        .padding(.horizontal, 9)
-                                        .padding(.vertical, 5)
-                                        .background(Color.blue.opacity(0.1))
-                                        .clipShape(RoundedRectangle(cornerRadius: 8))
-                                } else if let sts = step.stitchCountAfter, sts > 0 {
-                                    Label("\(sts) maglie sui ferri", systemImage: "number")
-                                        .font(.caption.bold())
-                                        .foregroundColor(.blue)
-                                        .padding(.horizontal, 9)
-                                        .padding(.vertical, 5)
-                                        .background(Color.blue.opacity(0.1))
-                                        .clipShape(RoundedRectangle(cornerRadius: 8))
-                                }
-                                
-                                if let measure = step.targetMeasureCm {
-                                    Label("Misura: \(String(format: "%.0f", measure)) cm", systemImage: "ruler")
-                                        .font(.caption.bold())
-                                        .foregroundColor(.purple)
-                                        .padding(.horizontal, 9)
-                                        .padding(.vertical, 5)
-                                        .background(Color.purple.opacity(0.1))
-                                        .clipShape(RoundedRectangle(cornerRadius: 8))
-                                }
+                                Label("Misura: \(String(format: "%.0f", measure)) cm", systemImage: "ruler")
+                                    .font(.caption.bold())
+                                    .foregroundColor(.purple)
+                                    .padding(.horizontal, 9)
+                                    .padding(.vertical, 5)
+                                    .background(Color.purple.opacity(0.1))
+                                    .clipShape(RoundedRectangle(cornerRadius: 8))
                             }
                         }
                         
@@ -896,7 +877,7 @@ struct GuideSingleCardView: View {
                 .padding(.horizontal, 16)
                 .padding(.bottom, 4)
             }
-            .sheet(isPresented: $showingEditSheet) {
+            .sheet(item: $stepToEdit) { step in
                 EditGuideStepSheet(step: step, onDelete: {
                     onDeleteStep(step)
                 })

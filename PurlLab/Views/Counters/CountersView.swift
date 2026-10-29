@@ -230,7 +230,6 @@ struct ActiveSectionCounterCard: View {
         } else {
             VStack(alignment: .leading, spacing: 14) {
                 headerRow
-                stitchesBadge
                 progressSection
                 counterButtonsRow
             }
@@ -278,37 +277,7 @@ struct ActiveSectionCounterCard: View {
         }
     }
     
-    @ViewBuilder
-    private var stitchesBadge: some View {
-        if let before = step.stitchCountBefore, let after = step.stitchCountAfter, before != after {
-            let diff = after - before
-            let diffStr = diff > 0 ? "+\(diff)" : "\(diff)"
-            HStack(spacing: 6) {
-                Image(systemName: "circle.grid.cross.fill")
-                    .font(.caption2)
-                Text("\(before) → \(after) maglie (\(diffStr))")
-                    .font(.caption.bold())
-            }
-            .foregroundColor(.indigo)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 4)
-            .background(Color.indigo.opacity(0.1))
-            .clipShape(Capsule())
-        } else if let sts = step.stitchCountAfter ?? step.stitchCountBefore, sts > 0 {
-            HStack(spacing: 6) {
-                Image(systemName: "circle.grid.cross.fill")
-                    .font(.caption2)
-                Text("\(sts) maglie sul ferro")
-                    .font(.caption.bold())
-            }
-            .foregroundColor(.indigo)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 4)
-            .background(Color.indigo.opacity(0.1))
-            .clipShape(Capsule())
-        }
-    }
-    
+
     @ViewBuilder
     private var progressSection: some View {
         if let target = step.targetStepCount, target > 0 {

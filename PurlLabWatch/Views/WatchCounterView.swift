@@ -136,20 +136,6 @@ struct WatchCounterView: View {
                     .lineLimit(2)
                     .padding(.horizontal, 4)
             }
-            
-            if let stitchesText = project.stitchesDescription {
-                HStack(spacing: 4) {
-                    Image(systemName: "circle.grid.cross.fill")
-                        .font(.system(size: 8))
-                    Text(stitchesText)
-                        .font(.system(size: 10, weight: .bold))
-                }
-                .foregroundColor(.indigo.opacity(0.9))
-                .padding(.horizontal, 8)
-                .padding(.vertical, 2)
-                .background(Color.indigo.opacity(0.18))
-                .clipShape(Capsule())
-            }
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 6)

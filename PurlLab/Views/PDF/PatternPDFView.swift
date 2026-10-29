@@ -155,6 +155,20 @@ struct PatternPDFView: View {
                     HStack {
                         Spacer()
                         VStack(spacing: 8) {
+                            // Toggle Evidenziatore
+                            Button {
+                                withAnimation { isSliderVisible.toggle() }
+                            } label: {
+                                Image(systemName: isSliderVisible ? "highlighter" : "highlighter")
+                                    .symbolVariant(isSliderVisible ? .fill : .none)
+                                    .font(.title3.bold())
+                                    .foregroundColor(isSliderVisible ? .accentColor : .primary)
+                                    .frame(width: 44, height: 44)
+                                    .background(Color(.secondarySystemGroupedBackground))
+                                    .clipShape(Circle())
+                                    .shadow(color: Color.black.opacity(0.12), radius: 6, x: 0, y: 2)
+                            }
+                            
                             // Zoom In (+)
                             Button {
                                 zoomTrigger = .zoomIn
@@ -196,16 +210,6 @@ struct PatternPDFView: View {
                         }
                         .padding(.trailing, 16)
                         .padding(.bottom, 24)
-                    }
-                }
-            }
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        withAnimation { isSliderVisible.toggle() }
-                    } label: {
-                        Label("Evidenziatore", systemImage: isSliderVisible ? "highlighter" : "highlighter")
-                            .symbolVariant(isSliderVisible ? .fill : .none)
                     }
                 }
             }

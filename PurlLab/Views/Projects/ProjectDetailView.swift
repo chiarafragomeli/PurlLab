@@ -130,9 +130,16 @@ struct ProjectDetailView: View {
     @State private var showingGaugeSheet = false
     @State private var showingAddStepSheet = false
     @State private var showingDeleteAlert = false
+    @State private var stepToEdit: GuideStep? = nil
     @State private var editedTitle = ""
     @State private var editedDesigner = ""
     @State private var editedSize = ""
+    
+    private var activeGuideStep: GuideStep? {
+        let sorted = project.guideSteps.sorted(by: { $0.orderIndex < $1.orderIndex })
+        guard currentGuideStepIndex >= 0 && currentGuideStepIndex < sorted.count else { return nil }
+        return sorted[currentGuideStepIndex]
+    }
     
     var body: some View {
         Group {
@@ -203,13 +210,21 @@ struct ProjectDetailView: View {
                     }
                     
                     Menu {
+                        if selectedTab == .guide, let active = activeGuideStep {
+                            Button {
+                                stepToEdit = active
+                            } label: {
+                                Label("Modifica Scheda Attuale", systemImage: "pencil")
+                            }
+                        }
+                        
                         Button {
                             editedTitle = project.title
                             editedDesigner = project.designer
                             editedSize = project.selectedSize
                             showingEditProject = true
                         } label: {
-                            Label("Modifica Info Progetto", systemImage: "pencil")
+                            Label("Modifica Info Progetto", systemImage: "info.circle")
                         }
                         
                         Button {
@@ -237,6 +252,16 @@ struct ProjectDetailView: View {
                     }
                 }
             }
+        }
+        .sheet(item: $stepToEdit) { step in
+            EditGuideStepSheet(step: step, onDelete: {
+                if let idx = project.guideSteps.firstIndex(where: { $0.id == step.id }) {
+                    project.guideSteps.remove(at: idx)
+                    modelContext.delete(step)
+                    try? modelContext.save()
+                    WatchConnectivityIOSManager.shared.syncAllProjectsToWatch()
+                }
+            })
         }
         .sheet(isPresented: $showingAddStepSheet) {
             AddGuideStepSheet(project: project)
