@@ -1,6 +1,9 @@
 import Foundation
 import UIKit
 import SwiftData
+import os
+
+private let timerLogger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.chiara.PurlLab", category: "timer")
 
 @MainActor
 @Observable
@@ -98,19 +101,34 @@ final class TimerManager {
     }
     
     // MARK: - Persistenza Sessione
-    private func persistSession(projectId: UUID, start: Date, end: Date, duration: TimeInterval) {
-        guard duration > 0, let modelContext else { return }
+    @discardableResult
+    private func persistSession(projectId: UUID, start: Date, end: Date, duration: TimeInterval) -> Bool {
+        guard duration > 0, let modelContext else { return false }
         let descriptor = FetchDescriptor<KnittingProject>(
             predicate: #Predicate { $0.id == projectId }
         )
-        guard let project = try? modelContext.fetch(descriptor).first else { return }
+        guard let project = try? modelContext.fetch(descriptor).first else {
+            timerLogger.error("Progetto \(projectId) non trovato durante il salvataggio della sessione timer")
+            return false
+        }
         
         let session = TimerSession(startDate: start, endDate: end, durationSeconds: duration)
         session.project = project
         project.timerSessions.append(session)
         project.totalSecondsWorked += duration
         project.updatedAt = Date()
-        try? modelContext.save()
+        do {
+            try modelContext.save()
+            return true
+        } catch {
+            timerLogger.error("Errore salvataggio sessione timer in SwiftData: \(error.localizedDescription)")
+            if let idx = project.timerSessions.firstIndex(where: { $0.id == session.id }) {
+                project.timerSessions.remove(at: idx)
+            }
+            project.totalSecondsWorked -= duration
+            modelContext.delete(session)
+            return false
+        }
     }
     
     // MARK: - Controlli Sessione
@@ -184,11 +202,15 @@ final class TimerManager {
         let duration = max(0, now.timeIntervalSince(start))
         guard duration > 0 else { return 0 }
         
-        persistSession(projectId: projectId, start: start, end: now, duration: duration)
-        
-        sessionStartDate = now
-        elapsedSecondsInCurrentSession = 0
-        return duration
+        let saved = persistSession(projectId: projectId, start: start, end: now, duration: duration)
+        if saved {
+            sessionStartDate = now
+            elapsedSecondsInCurrentSession = 0
+            return duration
+        } else {
+            timerLogger.warning("flushElapsedToTotal: salvataggio fallito, sessionStartDate mantenuto per non perdere il tempo lavorato")
+            return 0
+        }
     }
     
     func registerInteraction() {

@@ -160,4 +160,32 @@ final class TimerManagerTests: XCTestCase {
         XCTAssertEqual(project.totalSecondsWorked, 0)
         XCTAssertTrue(project.timerSessions.isEmpty)
     }
+    
+    func testFlushElapsedToTotalPreservesStartDateOnSaveFailure() async throws {
+        let project = KnittingProject(title: "Progetto Test Flush Error")
+        context.insert(project)
+        try context.save()
+        
+        TimerManager.shared.start(for: project.id)
+        guard let originalStart = TimerManager.shared.sessionStartDate else {
+            XCTFail("sessionStartDate non impostato")
+            return
+        }
+        
+        try await Task.sleep(nanoseconds: 20_000_000)
+        
+        // Simula disconnessione / assenza del modelContext (save impossibile)
+        TimerManager.shared.configure(with: nil)
+        
+        let flushed = TimerManager.shared.flushElapsedToTotal()
+        XCTAssertEqual(flushed, 0, "Se il save fallisce, flushElapsedToTotal deve restituire 0")
+        XCTAssertEqual(TimerManager.shared.sessionStartDate, originalStart, "sessionStartDate non deve essere avanzato se il salvataggio fallisce")
+        
+        // Ripristina il modelContext: ora il flush deve avere successo e avanzare la data
+        TimerManager.shared.configure(with: context)
+        let successFlush = TimerManager.shared.flushElapsedToTotal()
+        XCTAssertGreaterThan(successFlush, 0)
+        XCTAssertNotEqual(TimerManager.shared.sessionStartDate, originalStart)
+        XCTAssertEqual(project.timerSessions.count, 1)
+    }
 }

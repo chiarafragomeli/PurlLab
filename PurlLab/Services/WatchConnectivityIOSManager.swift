@@ -2,6 +2,9 @@ import Foundation
 import WatchConnectivity
 import SwiftData
 import SwiftUI
+import os
+
+private let watchLogger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.chiara.PurlLab", category: "watch")
 
 extension Notification.Name {
     static let watchDidChangeActiveStep = Notification.Name("PurlLabWatchDidChangeActiveStep")
@@ -248,9 +251,13 @@ final class WatchConnectivityIOSManager: NSObject, WCSessionDelegate {
             return currentSyncData(for: allProjects)
         }
         
-        let projUUID = projectId.flatMap { UUID(uuidString: $0) }
         let targetProject: KnittingProject?
-        if let uuid = projUUID, let match = allProjects.first(where: { $0.id == uuid }) {
+        if let pIdString = projectId {
+            guard let uuid = UUID(uuidString: pIdString),
+                  let match = allProjects.first(where: { $0.id == uuid }) else {
+                watchLogger.warning("Comando watch rifiutato: projectId '\(pIdString)' non corrisponde ad alcun progetto valido")
+                return currentSyncData(for: allProjects)
+            }
             targetProject = match
         } else if let activeId = self.activeProjectId, let match = allProjects.first(where: { $0.id == activeId }) {
             targetProject = match
@@ -310,14 +317,15 @@ final class WatchConnectivityIOSManager: NSObject, WCSessionDelegate {
         switch command {
         case .incrementMainCounter:
             if let count = newCount {
+                let safeCount = min(max(0, count), 100_000)
                 if let step = currentStep {
-                    step.currentStepCount = max(0, count)
+                    step.currentStepCount = safeCount
                 } else if let globalCounter = project.counters.first {
-                    globalCounter.currentCount = max(0, count)
+                    globalCounter.currentCount = safeCount
                 }
             } else {
                 if let step = currentStep {
-                    step.currentStepCount += 1
+                    step.currentStepCount = min(step.currentStepCount + 1, 100_000)
                 } else if let globalCounter = project.counters.first {
                     globalCounter.increment()
                 }
@@ -325,16 +333,21 @@ final class WatchConnectivityIOSManager: NSObject, WCSessionDelegate {
             // Sincronizza eventuale Contatore Globale in project.counters
             updateGlobalRowCounter(for: project)
             project.updatedAt = Date()
-            try? context.save()
+            do {
+                try context.save()
+            } catch {
+                watchLogger.error("Errore salvataggio context dopo incrementMainCounter: \(error.localizedDescription)")
+            }
             TimerManager.shared.registerInteraction()
             NotificationCenter.default.post(name: .watchDidUpdateCounter, object: nil, userInfo: ["projectId": project.id, "stepId": currentStep?.id as Any])
             
         case .decrementMainCounter:
             if let count = newCount {
+                let safeCount = min(max(0, count), 100_000)
                 if let step = currentStep {
-                    step.currentStepCount = max(0, count)
+                    step.currentStepCount = safeCount
                 } else if let globalCounter = project.counters.first {
-                    globalCounter.currentCount = max(0, count)
+                    globalCounter.currentCount = safeCount
                 }
             } else {
                 if let step = currentStep, step.currentStepCount > 0 {
@@ -345,20 +358,29 @@ final class WatchConnectivityIOSManager: NSObject, WCSessionDelegate {
             }
             updateGlobalRowCounter(for: project)
             project.updatedAt = Date()
-            try? context.save()
+            do {
+                try context.save()
+            } catch {
+                watchLogger.error("Errore salvataggio context dopo decrementMainCounter: \(error.localizedDescription)")
+            }
             TimerManager.shared.registerInteraction()
             NotificationCenter.default.post(name: .watchDidUpdateCounter, object: nil, userInfo: ["projectId": project.id, "stepId": currentStep?.id as Any])
             
         case .setMainCounter:
             if let count = newCount {
+                let safeCount = min(max(0, count), 100_000)
                 if let step = currentStep {
-                    step.currentStepCount = max(0, count)
+                    step.currentStepCount = safeCount
                 } else if let globalCounter = project.counters.first {
-                    globalCounter.currentCount = max(0, count)
+                    globalCounter.currentCount = safeCount
                 }
                 updateGlobalRowCounter(for: project)
                 project.updatedAt = Date()
-                try? context.save()
+                do {
+                    try context.save()
+                } catch {
+                    watchLogger.error("Errore salvataggio context dopo setMainCounter: \(error.localizedDescription)")
+                }
                 TimerManager.shared.registerInteraction()
                 NotificationCenter.default.post(name: .watchDidUpdateCounter, object: nil, userInfo: ["projectId": project.id, "stepId": currentStep?.id as Any])
             }
@@ -399,7 +421,11 @@ final class WatchConnectivityIOSManager: NSObject, WCSessionDelegate {
                     )
                 }
                 project.updatedAt = Date()
-                try? context.save()
+                do {
+                    try context.save()
+                } catch {
+                    watchLogger.error("Errore salvataggio context dopo completeStep: \(error.localizedDescription)")
+                }
                 NotificationCenter.default.post(name: .watchDidUpdateCounter, object: nil, userInfo: ["projectId": project.id])
             }
             
@@ -436,11 +462,16 @@ final class WatchConnectivityIOSManager: NSObject, WCSessionDelegate {
             )
             
         case .incrementExtraCounter, .decrementExtraCounter:
-            if let step = currentStep, let idx = index, idx < step.extraCounterValues.count {
+            if let step = currentStep, let idx = index, step.extraCounterValues.indices.contains(idx) {
                 let delta = (command == .incrementExtraCounter) ? 1 : -1
-                step.extraCounterValues[idx] = max(0, step.extraCounterValues[idx] + delta)
+                let updated = step.extraCounterValues[idx] + delta
+                step.extraCounterValues[idx] = min(max(0, updated), 100_000)
                 project.updatedAt = Date()
-                try? context.save()
+                do {
+                    try context.save()
+                } catch {
+                    watchLogger.error("Errore salvataggio context dopo extraCounter: \(error.localizedDescription)")
+                }
                 TimerManager.shared.registerInteraction()
             }
         }

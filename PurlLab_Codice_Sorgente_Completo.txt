@@ -1,6 +1,9 @@
 // MARK: - FILE: PurlLab/App/PurlLabApp.swift
 import SwiftUI
 import SwiftData
+import os
+
+private let storageLogger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.chiara.PurlLab", category: "storage")
 
 // MARK: - Versioned Schema & Migration Plan (CRIT-04)
 
@@ -31,36 +34,152 @@ enum PurlLabMigrationPlan: SchemaMigrationPlan {
 struct PurlLabApp: App {
     @Environment(\.scenePhase) private var scenePhase
     
-    static let sharedModelContainer: ModelContainer = {
+    static func createPersistentContainer() throws -> ModelContainer {
         let schema = Schema(versionedSchema: PurlLabSchemaV1.self)
         let modelConfiguration = ModelConfiguration("PurlLabV4", schema: schema, isStoredInMemoryOnly: false)
-
+        return try ModelContainer(for: schema, migrationPlan: PurlLabMigrationPlan.self, configurations: [modelConfiguration])
+    }
+    
+    static func createTemporaryInMemoryContainer() throws -> ModelContainer {
+        let schema = Schema(versionedSchema: PurlLabSchemaV1.self)
+        let inMemoryConfig = ModelConfiguration("PurlLabV4_InMemory", schema: schema, isStoredInMemoryOnly: true)
+        return try ModelContainer(for: schema, configurations: [inMemoryConfig])
+    }
+    
+    static let initialStorageResult: Result<ModelContainer, Error> = {
         do {
-            return try ModelContainer(for: schema, migrationPlan: PurlLabMigrationPlan.self, configurations: [modelConfiguration])
+            let container = try createPersistentContainer()
+            storageLogger.info("ModelContainer persistente inizializzato con successo")
+            return .success(container)
         } catch {
-            print("⚠️ [PurlLabApp] Impossibile inizializzare ModelContainer persistente (\(error)). Tentativo di ripristino in memoria...")
-            let inMemoryConfig = ModelConfiguration("PurlLabV4_InMemory", schema: schema, isStoredInMemoryOnly: true)
-            do {
-                return try ModelContainer(for: schema, configurations: [inMemoryConfig])
-            } catch {
-                fatalError("Fallback in memoria fallito: \(error)")
-            }
+            storageLogger.error("Impossibile inizializzare ModelContainer persistente: \(error.localizedDescription)")
+            return .failure(error)
         }
     }()
-
+    
+    static var sharedModelContainer: ModelContainer? {
+        try? initialStorageResult.get()
+    }
+    
+    @State private var storageResult: Result<ModelContainer, Error> = PurlLabApp.initialStorageResult
+    @State private var showingTemporaryStoreAlert: Bool = false
+    
     var body: some Scene {
         WindowGroup {
-            ProjectListView()
-                .onAppear {
-                    let context = Self.sharedModelContainer.mainContext
-                    WatchConnectivityIOSManager.shared.configure(with: context)
-                    TimerManager.shared.configure(with: context)
+            switch storageResult {
+            case .success(let container):
+                ProjectListView()
+                    .onAppear {
+                        let context = container.mainContext
+                        WatchConnectivityIOSManager.shared.configure(with: context)
+                        TimerManager.shared.configure(with: context)
+                    }
+                    .modelContainer(container)
+                
+            case .failure(let error):
+                StorageErrorBlockingView(
+                    error: error,
+                    onRetry: {
+                        do {
+                            let container = try Self.createPersistentContainer()
+                            storageLogger.info("Riprova: ModelContainer persistente inizializzato con successo")
+                            storageResult = .success(container)
+                        } catch {
+                            storageLogger.error("Riprova fallita: \(error.localizedDescription)")
+                            storageResult = .failure(error)
+                        }
+                    },
+                    onRequestTemporaryStore: {
+                        showingTemporaryStoreAlert = true
+                    }
+                )
+                .alert("Usa archivio temporaneo?", isPresented: $showingTemporaryStoreAlert) {
+                    Button("Annulla", role: .cancel) { }
+                    Button("Usa archivio temporaneo", role: .destructive) {
+                        do {
+                            let inMemoryContainer = try Self.createTemporaryInMemoryContainer()
+                            storageLogger.warning("Avvio con archivio temporaneo in memoria confermato dall'utente")
+                            storageResult = .success(inMemoryContainer)
+                        } catch {
+                            storageLogger.error("Inizializzazione archivio temporaneo fallita: \(error.localizedDescription)")
+                            storageResult = .failure(error)
+                        }
+                    }
+                } message: {
+                    Text("I dati creati in questa sessione NON verranno salvati su disco e andranno persi alla chiusura dell'applicazione. Nessun dato esistente verrà toccato o cancellato.")
                 }
+            }
         }
-        .modelContainer(Self.sharedModelContainer)
     }
 }
 
+// MARK: - Schermata Bloccante Errore Archivio Dati
+struct StorageErrorBlockingView: View {
+    let error: Error
+    let onRetry: () -> Void
+    let onRequestTemporaryStore: () -> Void
+    
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 24) {
+                Spacer()
+                
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 64))
+                    .foregroundColor(.orange)
+                
+                Text("Errore Archivio Dati")
+                    .font(.title2.bold())
+                
+                Text("Non è stato possibile aprire l'archivio locale dei progetti. I tuoi dati su disco non sono stati modificati né cancellati.")
+                    .font(.body)
+                    .multilineTextAlignment(.center)
+                    .foregroundColor(.secondary)
+                    .padding(.horizontal, 24)
+                
+                ScrollView {
+                    Text(error.localizedDescription)
+                        .font(.caption.monospaced())
+                        .foregroundColor(.primary)
+                        .padding()
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color(.secondarySystemBackground))
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                }
+                .frame(maxHeight: 120)
+                .padding(.horizontal, 24)
+                
+                Spacer()
+                
+                VStack(spacing: 12) {
+                    Button(action: onRetry) {
+                        HStack {
+                            Image(systemName: "arrow.clockwise")
+                            Text("Riprova")
+                        }
+                        .bold()
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 50)
+                        .background(Color.accentColor)
+                        .foregroundColor(.white)
+                        .clipShape(RoundedRectangle(cornerRadius: 14))
+                    }
+                    
+                    Button(action: onRequestTemporaryStore) {
+                        Text("Usa archivio temporaneo (i dati non verranno salvati)")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                            .multilineTextAlignment(.center)
+                            .padding(.vertical, 8)
+                    }
+                }
+                .padding(.horizontal, 24)
+                .padding(.bottom, 24)
+            }
+            .navigationBarHidden(true)
+        }
+    }
+}
 
 
 // MARK: - FILE: PurlLab/Models/GuideStep.swift
@@ -6896,6 +7015,9 @@ final class KeychainHelper: @unchecked Sendable {
 import Foundation
 import UIKit
 import SwiftData
+import os
+
+private let timerLogger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.chiara.PurlLab", category: "timer")
 
 @MainActor
 @Observable
@@ -6993,19 +7115,34 @@ final class TimerManager {
     }
     
     // MARK: - Persistenza Sessione
-    private func persistSession(projectId: UUID, start: Date, end: Date, duration: TimeInterval) {
-        guard duration > 0, let modelContext else { return }
+    @discardableResult
+    private func persistSession(projectId: UUID, start: Date, end: Date, duration: TimeInterval) -> Bool {
+        guard duration > 0, let modelContext else { return false }
         let descriptor = FetchDescriptor<KnittingProject>(
             predicate: #Predicate { $0.id == projectId }
         )
-        guard let project = try? modelContext.fetch(descriptor).first else { return }
+        guard let project = try? modelContext.fetch(descriptor).first else {
+            timerLogger.error("Progetto \(projectId) non trovato durante il salvataggio della sessione timer")
+            return false
+        }
         
         let session = TimerSession(startDate: start, endDate: end, durationSeconds: duration)
         session.project = project
         project.timerSessions.append(session)
         project.totalSecondsWorked += duration
         project.updatedAt = Date()
-        try? modelContext.save()
+        do {
+            try modelContext.save()
+            return true
+        } catch {
+            timerLogger.error("Errore salvataggio sessione timer in SwiftData: \(error.localizedDescription)")
+            if let idx = project.timerSessions.firstIndex(where: { $0.id == session.id }) {
+                project.timerSessions.remove(at: idx)
+            }
+            project.totalSecondsWorked -= duration
+            modelContext.delete(session)
+            return false
+        }
     }
     
     // MARK: - Controlli Sessione
@@ -7079,11 +7216,15 @@ final class TimerManager {
         let duration = max(0, now.timeIntervalSince(start))
         guard duration > 0 else { return 0 }
         
-        persistSession(projectId: projectId, start: start, end: now, duration: duration)
-        
-        sessionStartDate = now
-        elapsedSecondsInCurrentSession = 0
-        return duration
+        let saved = persistSession(projectId: projectId, start: start, end: now, duration: duration)
+        if saved {
+            sessionStartDate = now
+            elapsedSecondsInCurrentSession = 0
+            return duration
+        } else {
+            timerLogger.warning("flushElapsedToTotal: salvataggio fallito, sessionStartDate mantenuto per non perdere il tempo lavorato")
+            return 0
+        }
     }
     
     func registerInteraction() {
@@ -7140,6 +7281,9 @@ import Foundation
 import WatchConnectivity
 import SwiftData
 import SwiftUI
+import os
+
+private let watchLogger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.chiara.PurlLab", category: "watch")
 
 extension Notification.Name {
     static let watchDidChangeActiveStep = Notification.Name("PurlLabWatchDidChangeActiveStep")
@@ -7386,9 +7530,13 @@ final class WatchConnectivityIOSManager: NSObject, WCSessionDelegate {
             return currentSyncData(for: allProjects)
         }
         
-        let projUUID = projectId.flatMap { UUID(uuidString: $0) }
         let targetProject: KnittingProject?
-        if let uuid = projUUID, let match = allProjects.first(where: { $0.id == uuid }) {
+        if let pIdString = projectId {
+            guard let uuid = UUID(uuidString: pIdString),
+                  let match = allProjects.first(where: { $0.id == uuid }) else {
+                watchLogger.warning("Comando watch rifiutato: projectId '\(pIdString)' non corrisponde ad alcun progetto valido")
+                return currentSyncData(for: allProjects)
+            }
             targetProject = match
         } else if let activeId = self.activeProjectId, let match = allProjects.first(where: { $0.id == activeId }) {
             targetProject = match
@@ -7448,14 +7596,15 @@ final class WatchConnectivityIOSManager: NSObject, WCSessionDelegate {
         switch command {
         case .incrementMainCounter:
             if let count = newCount {
+                let safeCount = min(max(0, count), 100_000)
                 if let step = currentStep {
-                    step.currentStepCount = max(0, count)
+                    step.currentStepCount = safeCount
                 } else if let globalCounter = project.counters.first {
-                    globalCounter.currentCount = max(0, count)
+                    globalCounter.currentCount = safeCount
                 }
             } else {
                 if let step = currentStep {
-                    step.currentStepCount += 1
+                    step.currentStepCount = min(step.currentStepCount + 1, 100_000)
                 } else if let globalCounter = project.counters.first {
                     globalCounter.increment()
                 }
@@ -7463,16 +7612,21 @@ final class WatchConnectivityIOSManager: NSObject, WCSessionDelegate {
             // Sincronizza eventuale Contatore Globale in project.counters
             updateGlobalRowCounter(for: project)
             project.updatedAt = Date()
-            try? context.save()
+            do {
+                try context.save()
+            } catch {
+                watchLogger.error("Errore salvataggio context dopo incrementMainCounter: \(error.localizedDescription)")
+            }
             TimerManager.shared.registerInteraction()
             NotificationCenter.default.post(name: .watchDidUpdateCounter, object: nil, userInfo: ["projectId": project.id, "stepId": currentStep?.id as Any])
             
         case .decrementMainCounter:
             if let count = newCount {
+                let safeCount = min(max(0, count), 100_000)
                 if let step = currentStep {
-                    step.currentStepCount = max(0, count)
+                    step.currentStepCount = safeCount
                 } else if let globalCounter = project.counters.first {
-                    globalCounter.currentCount = max(0, count)
+                    globalCounter.currentCount = safeCount
                 }
             } else {
                 if let step = currentStep, step.currentStepCount > 0 {
@@ -7483,20 +7637,29 @@ final class WatchConnectivityIOSManager: NSObject, WCSessionDelegate {
             }
             updateGlobalRowCounter(for: project)
             project.updatedAt = Date()
-            try? context.save()
+            do {
+                try context.save()
+            } catch {
+                watchLogger.error("Errore salvataggio context dopo decrementMainCounter: \(error.localizedDescription)")
+            }
             TimerManager.shared.registerInteraction()
             NotificationCenter.default.post(name: .watchDidUpdateCounter, object: nil, userInfo: ["projectId": project.id, "stepId": currentStep?.id as Any])
             
         case .setMainCounter:
             if let count = newCount {
+                let safeCount = min(max(0, count), 100_000)
                 if let step = currentStep {
-                    step.currentStepCount = max(0, count)
+                    step.currentStepCount = safeCount
                 } else if let globalCounter = project.counters.first {
-                    globalCounter.currentCount = max(0, count)
+                    globalCounter.currentCount = safeCount
                 }
                 updateGlobalRowCounter(for: project)
                 project.updatedAt = Date()
-                try? context.save()
+                do {
+                    try context.save()
+                } catch {
+                    watchLogger.error("Errore salvataggio context dopo setMainCounter: \(error.localizedDescription)")
+                }
                 TimerManager.shared.registerInteraction()
                 NotificationCenter.default.post(name: .watchDidUpdateCounter, object: nil, userInfo: ["projectId": project.id, "stepId": currentStep?.id as Any])
             }
@@ -7537,7 +7700,11 @@ final class WatchConnectivityIOSManager: NSObject, WCSessionDelegate {
                     )
                 }
                 project.updatedAt = Date()
-                try? context.save()
+                do {
+                    try context.save()
+                } catch {
+                    watchLogger.error("Errore salvataggio context dopo completeStep: \(error.localizedDescription)")
+                }
                 NotificationCenter.default.post(name: .watchDidUpdateCounter, object: nil, userInfo: ["projectId": project.id])
             }
             
@@ -7574,11 +7741,16 @@ final class WatchConnectivityIOSManager: NSObject, WCSessionDelegate {
             )
             
         case .incrementExtraCounter, .decrementExtraCounter:
-            if let step = currentStep, let idx = index, idx < step.extraCounterValues.count {
+            if let step = currentStep, let idx = index, step.extraCounterValues.indices.contains(idx) {
                 let delta = (command == .incrementExtraCounter) ? 1 : -1
-                step.extraCounterValues[idx] = max(0, step.extraCounterValues[idx] + delta)
+                let updated = step.extraCounterValues[idx] + delta
+                step.extraCounterValues[idx] = min(max(0, updated), 100_000)
                 project.updatedAt = Date()
-                try? context.save()
+                do {
+                    try context.save()
+                } catch {
+                    watchLogger.error("Errore salvataggio context dopo extraCounter: \(error.localizedDescription)")
+                }
                 TimerManager.shared.registerInteraction()
             }
         }
@@ -9474,6 +9646,128 @@ final class KnittingProjectTests: XCTestCase {
         // Lo step attivo calcolato deve ritornare al primo step
         XCTAssertEqual(project.activeWorkingStep()?.id, step1.id, "Lo step attivo deve tornare al primo step")
     }
+    
+    func testHandleIncomingCommandNegativeOrOutOfBoundsExtraIndexDoesNotCrash() {
+        let project = KnittingProject(title: "Test Extra Index Safety")
+        context.insert(project)
+        
+        let step = GuideStep(sectionTitle: "Bordo", instructionText: "Ripeti", orderIndex: 0, hasCounter: true)
+        step.extraCounterLabels = ["Giri Extra"]
+        step.extraCounterValues = [5]
+        step.project = project
+        project.guideSteps = [step]
+        try? context.save()
+        
+        let manager = WatchConnectivityIOSManager.shared
+        manager.configure(with: context)
+        manager.setActiveProject(project)
+        
+        // 1. Indice negativo: NON deve mandare in crash l'app
+        _ = manager.handleIncomingCommand(
+            commandRaw: WatchCommandType.incrementExtraCounter.rawValue,
+            projectId: project.id.uuidString,
+            stepId: step.id.uuidString,
+            newCount: nil,
+            index: -1
+        )
+        XCTAssertEqual(step.extraCounterValues[0], 5, "Un indice negativo non deve alterare i contatori né causare crash")
+        
+        // 2. Indice fuori limite superiore: NON deve mandare in crash l'app
+        _ = manager.handleIncomingCommand(
+            commandRaw: WatchCommandType.incrementExtraCounter.rawValue,
+            projectId: project.id.uuidString,
+            stepId: step.id.uuidString,
+            newCount: nil,
+            index: 99
+        )
+        XCTAssertEqual(step.extraCounterValues[0], 5, "Un indice out-of-bounds non deve alterare i contatori")
+        
+        // 3. Indice valido: incrementa correttamente
+        _ = manager.handleIncomingCommand(
+            commandRaw: WatchCommandType.incrementExtraCounter.rawValue,
+            projectId: project.id.uuidString,
+            stepId: step.id.uuidString,
+            newCount: nil,
+            index: 0
+        )
+        XCTAssertEqual(step.extraCounterValues[0], 6)
+    }
+    
+    func testHandleIncomingCommandClampsCountersToReasonableBounds() {
+        let project = KnittingProject(title: "Test Clamp Safety")
+        context.insert(project)
+        
+        let step = GuideStep(sectionTitle: "Corpo", instructionText: "Lavora", orderIndex: 0, hasCounter: true, currentStepCount: 0)
+        step.extraCounterLabels = ["Extra"]
+        step.extraCounterValues = [100_000]
+        step.project = project
+        project.guideSteps = [step]
+        try? context.save()
+        
+        let manager = WatchConnectivityIOSManager.shared
+        manager.configure(with: context)
+        manager.setActiveProject(project)
+        
+        // Imposta valore astronomico oltre 100_000: deve essere limitato a 100_000
+        _ = manager.handleIncomingCommand(
+            commandRaw: WatchCommandType.setMainCounter.rawValue,
+            projectId: project.id.uuidString,
+            stepId: step.id.uuidString,
+            newCount: 999_999,
+            index: nil
+        )
+        XCTAssertEqual(step.currentStepCount, 100_000)
+        
+        // Imposta valore negativo: deve essere limitato a 0
+        _ = manager.handleIncomingCommand(
+            commandRaw: WatchCommandType.setMainCounter.rawValue,
+            projectId: project.id.uuidString,
+            stepId: step.id.uuidString,
+            newCount: -42,
+            index: nil
+        )
+        XCTAssertEqual(step.currentStepCount, 0)
+        
+        // Incremento su extraCounter già a 100_000: non deve superare 100_000
+        _ = manager.handleIncomingCommand(
+            commandRaw: WatchCommandType.incrementExtraCounter.rawValue,
+            projectId: project.id.uuidString,
+            stepId: step.id.uuidString,
+            newCount: nil,
+            index: 0
+        )
+        XCTAssertEqual(step.extraCounterValues[0], 100_000)
+    }
+    
+    func testHandleIncomingCommandRejectsNonExistentProjectIdWithoutApplying() {
+        let project = KnittingProject(title: "Progetto Attivo Esistente")
+        context.insert(project)
+        
+        let step = GuideStep(sectionTitle: "Avvio", instructionText: "Avvia", orderIndex: 0, hasCounter: true, currentStepCount: 10)
+        step.project = project
+        project.guideSteps = [step]
+        try? context.save()
+        
+        let manager = WatchConnectivityIOSManager.shared
+        manager.configure(with: context)
+        manager.setActiveProject(project)
+        
+        let fakeUUID = UUID().uuidString
+        
+        // Invia comando con un projectId che non corrisponde ad alcun progetto
+        let syncData = manager.handleIncomingCommand(
+            commandRaw: WatchCommandType.incrementMainCounter.rawValue,
+            projectId: fakeUUID,
+            stepId: step.id.uuidString,
+            newCount: nil,
+            index: nil
+        )
+        
+        // Deve ritornare syncData corrente e non applicare nulla
+        XCTAssertNotNil(syncData)
+        XCTAssertEqual(step.currentStepCount, 10, "Il contatore del progetto non deve essere toccato quando il projectId non corrisponde")
+        XCTAssertEqual(manager.activeProjectId, project.id, "activeProjectId non deve essere mutato verso un progetto inesistente")
+    }
 }
 
 
@@ -9712,6 +10006,34 @@ final class TimerManagerTests: XCTestCase {
         XCTAssertEqual(TimerManager.shared.elapsedSecondsInCurrentSession, 0)
         XCTAssertEqual(project.totalSecondsWorked, 0)
         XCTAssertTrue(project.timerSessions.isEmpty)
+    }
+    
+    func testFlushElapsedToTotalPreservesStartDateOnSaveFailure() async throws {
+        let project = KnittingProject(title: "Progetto Test Flush Error")
+        context.insert(project)
+        try context.save()
+        
+        TimerManager.shared.start(for: project.id)
+        guard let originalStart = TimerManager.shared.sessionStartDate else {
+            XCTFail("sessionStartDate non impostato")
+            return
+        }
+        
+        try await Task.sleep(nanoseconds: 20_000_000)
+        
+        // Simula disconnessione / assenza del modelContext (save impossibile)
+        TimerManager.shared.configure(with: nil)
+        
+        let flushed = TimerManager.shared.flushElapsedToTotal()
+        XCTAssertEqual(flushed, 0, "Se il save fallisce, flushElapsedToTotal deve restituire 0")
+        XCTAssertEqual(TimerManager.shared.sessionStartDate, originalStart, "sessionStartDate non deve essere avanzato se il salvataggio fallisce")
+        
+        // Ripristina il modelContext: ora il flush deve avere successo e avanzare la data
+        TimerManager.shared.configure(with: context)
+        let successFlush = TimerManager.shared.flushElapsedToTotal()
+        XCTAssertGreaterThan(successFlush, 0)
+        XCTAssertNotEqual(TimerManager.shared.sessionStartDate, originalStart)
+        XCTAssertEqual(project.timerSessions.count, 1)
     }
 }
 

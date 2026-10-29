@@ -374,4 +374,126 @@ final class KnittingProjectTests: XCTestCase {
         // Lo step attivo calcolato deve ritornare al primo step
         XCTAssertEqual(project.activeWorkingStep()?.id, step1.id, "Lo step attivo deve tornare al primo step")
     }
+    
+    func testHandleIncomingCommandNegativeOrOutOfBoundsExtraIndexDoesNotCrash() {
+        let project = KnittingProject(title: "Test Extra Index Safety")
+        context.insert(project)
+        
+        let step = GuideStep(sectionTitle: "Bordo", instructionText: "Ripeti", orderIndex: 0, hasCounter: true)
+        step.extraCounterLabels = ["Giri Extra"]
+        step.extraCounterValues = [5]
+        step.project = project
+        project.guideSteps = [step]
+        try? context.save()
+        
+        let manager = WatchConnectivityIOSManager.shared
+        manager.configure(with: context)
+        manager.setActiveProject(project)
+        
+        // 1. Indice negativo: NON deve mandare in crash l'app
+        _ = manager.handleIncomingCommand(
+            commandRaw: WatchCommandType.incrementExtraCounter.rawValue,
+            projectId: project.id.uuidString,
+            stepId: step.id.uuidString,
+            newCount: nil,
+            index: -1
+        )
+        XCTAssertEqual(step.extraCounterValues[0], 5, "Un indice negativo non deve alterare i contatori né causare crash")
+        
+        // 2. Indice fuori limite superiore: NON deve mandare in crash l'app
+        _ = manager.handleIncomingCommand(
+            commandRaw: WatchCommandType.incrementExtraCounter.rawValue,
+            projectId: project.id.uuidString,
+            stepId: step.id.uuidString,
+            newCount: nil,
+            index: 99
+        )
+        XCTAssertEqual(step.extraCounterValues[0], 5, "Un indice out-of-bounds non deve alterare i contatori")
+        
+        // 3. Indice valido: incrementa correttamente
+        _ = manager.handleIncomingCommand(
+            commandRaw: WatchCommandType.incrementExtraCounter.rawValue,
+            projectId: project.id.uuidString,
+            stepId: step.id.uuidString,
+            newCount: nil,
+            index: 0
+        )
+        XCTAssertEqual(step.extraCounterValues[0], 6)
+    }
+    
+    func testHandleIncomingCommandClampsCountersToReasonableBounds() {
+        let project = KnittingProject(title: "Test Clamp Safety")
+        context.insert(project)
+        
+        let step = GuideStep(sectionTitle: "Corpo", instructionText: "Lavora", orderIndex: 0, hasCounter: true, currentStepCount: 0)
+        step.extraCounterLabels = ["Extra"]
+        step.extraCounterValues = [100_000]
+        step.project = project
+        project.guideSteps = [step]
+        try? context.save()
+        
+        let manager = WatchConnectivityIOSManager.shared
+        manager.configure(with: context)
+        manager.setActiveProject(project)
+        
+        // Imposta valore astronomico oltre 100_000: deve essere limitato a 100_000
+        _ = manager.handleIncomingCommand(
+            commandRaw: WatchCommandType.setMainCounter.rawValue,
+            projectId: project.id.uuidString,
+            stepId: step.id.uuidString,
+            newCount: 999_999,
+            index: nil
+        )
+        XCTAssertEqual(step.currentStepCount, 100_000)
+        
+        // Imposta valore negativo: deve essere limitato a 0
+        _ = manager.handleIncomingCommand(
+            commandRaw: WatchCommandType.setMainCounter.rawValue,
+            projectId: project.id.uuidString,
+            stepId: step.id.uuidString,
+            newCount: -42,
+            index: nil
+        )
+        XCTAssertEqual(step.currentStepCount, 0)
+        
+        // Incremento su extraCounter già a 100_000: non deve superare 100_000
+        _ = manager.handleIncomingCommand(
+            commandRaw: WatchCommandType.incrementExtraCounter.rawValue,
+            projectId: project.id.uuidString,
+            stepId: step.id.uuidString,
+            newCount: nil,
+            index: 0
+        )
+        XCTAssertEqual(step.extraCounterValues[0], 100_000)
+    }
+    
+    func testHandleIncomingCommandRejectsNonExistentProjectIdWithoutApplying() {
+        let project = KnittingProject(title: "Progetto Attivo Esistente")
+        context.insert(project)
+        
+        let step = GuideStep(sectionTitle: "Avvio", instructionText: "Avvia", orderIndex: 0, hasCounter: true, currentStepCount: 10)
+        step.project = project
+        project.guideSteps = [step]
+        try? context.save()
+        
+        let manager = WatchConnectivityIOSManager.shared
+        manager.configure(with: context)
+        manager.setActiveProject(project)
+        
+        let fakeUUID = UUID().uuidString
+        
+        // Invia comando con un projectId che non corrisponde ad alcun progetto
+        let syncData = manager.handleIncomingCommand(
+            commandRaw: WatchCommandType.incrementMainCounter.rawValue,
+            projectId: fakeUUID,
+            stepId: step.id.uuidString,
+            newCount: nil,
+            index: nil
+        )
+        
+        // Deve ritornare syncData corrente e non applicare nulla
+        XCTAssertNotNil(syncData)
+        XCTAssertEqual(step.currentStepCount, 10, "Il contatore del progetto non deve essere toccato quando il projectId non corrisponde")
+        XCTAssertEqual(manager.activeProjectId, project.id, "activeProjectId non deve essere mutato verso un progetto inesistente")
+    }
 }
