@@ -6,6 +6,10 @@ struct GuideCompletionView: View {
     @Bindable var project: KnittingProject
     var onReviewGuide: () -> Void
     var onExit: () -> Void
+    var onRestartFromBeginning: (() -> Void)? = nil
+    
+    @Environment(\.modelContext) private var modelContext
+    @State private var showingRestartAlert = false
     
     private var sortedSteps: [GuideStep] {
         project.guideSteps.sorted { $0.orderIndex < $1.orderIndex }
@@ -218,6 +222,16 @@ struct GuideCompletionView: View {
                                 .frame(height: 44)
                         }
                         .foregroundColor(.secondary)
+                        
+                        Button(role: .destructive) {
+                            showingRestartAlert = true
+                        } label: {
+                            Label("Ricomincia da capo", systemImage: "arrow.counterclockwise")
+                                .font(.subheadline.bold())
+                                .foregroundColor(.red)
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 44)
+                        }
                     }
                     .padding(.horizontal)
                     .padding(.bottom, 24)
@@ -234,6 +248,19 @@ struct GuideCompletionView: View {
                             .foregroundColor(.secondary)
                     }
                 }
+            }
+            .alert("Ricomincia da capo", isPresented: $showingRestartAlert) {
+                Button("Annulla", role: .cancel) { }
+                Button("Ricomincia da capo", role: .destructive) {
+                    project.resetAllProgress(modelContext: modelContext)
+                    if let onRestart = onRestartFromBeginning {
+                        onRestart()
+                    } else {
+                        onReviewGuide()
+                    }
+                }
+            } message: {
+                Text("Sei sicuro di voler ricominciare \"\(project.title)\" da capo? Tutti i progressi, i contatori e il tempo registrato verranno azzerati.")
             }
         }
     }

@@ -294,4 +294,84 @@ final class KnittingProjectTests: XCTestCase {
         // Deve rimanere rigorosamente su step2, senza azzerarsi a step1
         XCTAssertEqual(manager.activeStepId, step2.id, "setActiveProject non deve sovrascrivere lo step attivo se il progetto non è cambiato")
     }
+    
+    func testResetAllProgressRestartsProjectFromBeginning() {
+        let project = KnittingProject(title: "Maglione Test Restart")
+        project.completedAt = Date()
+        project.totalSecondsWorked = 3600
+        context.insert(project)
+        
+        let session = TimerSession(startDate: Date().addingTimeInterval(-3600), endDate: Date(), durationSeconds: 3600)
+        session.project = project
+        project.timerSessions.append(session)
+        
+        let counter = RowCounter(title: "Contatore Globale", currentCount: 25)
+        counter.project = project
+        project.counters.append(counter)
+        
+        let step1 = GuideStep(
+            sectionTitle: "Avvio",
+            instructionText: "Avvia 100 maglie",
+            isCompleted: true,
+            orderIndex: 0,
+            hasCounter: true,
+            counterLabel: "Avvio",
+            counterKind: "stitch",
+            currentStepCount: 100,
+            targetStepCount: 100
+        )
+        step1.extraCounterLabels = ["Ripetizioni"]
+        step1.extraCounterValues = [4]
+        step1.completedAt = Date()
+        
+        let step2 = GuideStep(
+            sectionTitle: "Corpo",
+            instructionText: "Lavora 50 ferri",
+            isCompleted: true,
+            orderIndex: 1,
+            hasCounter: true,
+            currentStepCount: 50,
+            targetStepCount: 50
+        )
+        step2.completedAt = Date()
+        
+        step1.project = project
+        step2.project = project
+        project.guideSteps = [step1, step2]
+        
+        try? context.save()
+        
+        XCTAssertNotNil(project.completedAt)
+        XCTAssertEqual(project.totalSecondsWorked, 3600)
+        XCTAssertEqual(project.timerSessions.count, 1)
+        XCTAssertEqual(project.counters.first?.currentCount, 25)
+        XCTAssertEqual(step1.currentStepCount, 100)
+        XCTAssertTrue(step1.isCompleted)
+        XCTAssertEqual(step1.extraCounterValues, [4])
+        
+        // Esegui reset completo dei progressi
+        project.resetAllProgress(modelContext: context)
+        
+        // Verifica azzeramento totale
+        XCTAssertNil(project.completedAt, "completedAt deve essere resettato a nil")
+        XCTAssertEqual(project.totalSecondsWorked, 0, "totalSecondsWorked deve essere 0")
+        XCTAssertTrue(project.timerSessions.isEmpty, "timerSessions deve essere svuotato")
+        XCTAssertEqual(counter.currentCount, 0, "I contatori manuali devono essere azzerati")
+        
+        XCTAssertEqual(step1.currentStepCount, 0, "Il contatore dello step 1 deve essere 0")
+        XCTAssertFalse(step1.isCompleted, "Lo step 1 non deve risultare completato")
+        XCTAssertNil(step1.completedAt, "completedAt dello step 1 deve essere nil")
+        XCTAssertEqual(step1.extraCounterValues, [0], "Gli extra contatori devono essere azzerati a 0")
+        
+        XCTAssertEqual(step2.currentStepCount, 0, "Il contatore dello step 2 deve essere 0")
+        XCTAssertFalse(step2.isCompleted, "Lo step 2 non deve risultare completato")
+        XCTAssertNil(step2.completedAt, "completedAt dello step 2 deve essere nil")
+        
+        XCTAssertEqual(project.totalGuideRowsWorked, 0, "I ferri lavorati totali devono essere 0")
+        XCTAssertEqual(project.totalStitchesWorked, 0, "Le maglie lavorate totali devono essere 0")
+        XCTAssertEqual(project.globalProgress, 0.0, "Il progresso globale deve essere 0%")
+        
+        // Lo step attivo calcolato deve ritornare al primo step
+        XCTAssertEqual(project.activeWorkingStep()?.id, step1.id, "Lo step attivo deve tornare al primo step")
+    }
 }

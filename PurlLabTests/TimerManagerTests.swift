@@ -140,4 +140,24 @@ final class TimerManagerTests: XCTestCase {
         XCTAssertEqual(session.durationSeconds, 240, accuracy: 1.0)
         XCTAssertEqual(project.totalSecondsWorked, 240, accuracy: 1.0)
     }
+    
+    func testCancelTimerStopsTimerWithoutSavingDuration() async throws {
+        let project = KnittingProject(title: "Progetto Test Cancel")
+        context.insert(project)
+        try context.save()
+        
+        TimerManager.shared.start(for: project.id)
+        XCTAssertTrue(TimerManager.shared.isRunning)
+        XCTAssertEqual(TimerManager.shared.activeProjectId, project.id)
+        
+        try await Task.sleep(nanoseconds: 30_000_000)
+        
+        TimerManager.shared.cancelTimer(for: project.id)
+        
+        XCTAssertFalse(TimerManager.shared.isRunning)
+        XCTAssertNil(TimerManager.shared.activeProjectId)
+        XCTAssertEqual(TimerManager.shared.elapsedSecondsInCurrentSession, 0)
+        XCTAssertEqual(project.totalSecondsWorked, 0)
+        XCTAssertTrue(project.timerSessions.isEmpty)
+    }
 }

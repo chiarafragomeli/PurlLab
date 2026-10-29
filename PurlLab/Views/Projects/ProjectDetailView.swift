@@ -128,6 +128,7 @@ struct ProjectDetailView: View {
     @State private var showingEditProject = false
     @State private var showingGaugeSheet = false
     @State private var showingAddStepSheet = false
+    @State private var showingRestartAlert = false
     @State private var showingDeleteAlert = false
     @State private var stepToEdit: GuideStep? = nil
     @State private var editedTitle = ""
@@ -241,6 +242,12 @@ struct ProjectDetailView: View {
                         Divider()
                         
                         Button(role: .destructive) {
+                            showingRestartAlert = true
+                        } label: {
+                            Label("Ricomincia da capo", systemImage: "arrow.counterclockwise")
+                        }
+                        
+                        Button(role: .destructive) {
                             showingDeleteAlert = true
                         } label: {
                             Label("Elimina Progetto", systemImage: "trash")
@@ -315,6 +322,15 @@ struct ProjectDetailView: View {
                 }
             }
             .presentationDetents([.medium, .large])
+        }
+        .alert("Ricomincia da capo", isPresented: $showingRestartAlert) {
+            Button("Annulla", role: .cancel) { }
+            Button("Ricomincia da capo", role: .destructive) {
+                project.resetAllProgress(modelContext: modelContext)
+                currentGuideStepIndex = 0
+            }
+        } message: {
+            Text("Sei sicuro di voler ricominciare \"\(project.title)\" da capo? Tutti i progressi, i contatori e il tempo registrato verranno azzerati.")
         }
         .alert("Elimina Progetto", isPresented: $showingDeleteAlert) {
             Button("Annulla", role: .cancel) { }

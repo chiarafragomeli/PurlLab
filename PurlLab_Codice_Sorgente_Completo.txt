@@ -382,6 +382,54 @@ extension KnittingProject {
         }
         return sorted.first
     }
+    
+    /// Annulla tutti i progressi fatti nel progetto e lo riavvia da capo:
+    /// azzera i contatori delle schede guida, i contatori manuali, le sessioni e il tempo lavorato,
+    /// e riapre tutti i passaggi come non completati.
+    @MainActor
+    func resetAllProgress(modelContext: ModelContext? = nil) {
+        completedAt = nil
+        totalSecondsWorked = 0
+        updatedAt = Date()
+        
+        // Azzera timer attivo se associato a questo progetto
+        TimerManager.shared.cancelTimer(for: id)
+        
+        // Elimina le sessioni del timer registrate finora
+        let context = modelContext ?? self.modelContext
+        if let context = context {
+            for session in timerSessions {
+                context.delete(session)
+            }
+        }
+        timerSessions.removeAll()
+        
+        // Azzera i progressi di ogni scheda della guida
+        for step in guideSteps {
+            step.currentStepCount = 0
+            step.isCompleted = false
+            step.completedAt = nil
+            if !step.extraCounterLabels.isEmpty {
+                step.extraCounterValues = Array(repeating: 0, count: step.extraCounterLabels.count)
+            } else {
+                step.extraCounterValues.removeAll()
+            }
+        }
+        
+        // Azzera tutti i contatori del progetto
+        for counter in counters {
+            counter.currentCount = 0
+        }
+        
+        // Reset indice salvato in UserDefaults
+        UserDefaults.standard.removeObject(forKey: "purl_lab_last_guide_step_\(id)")
+        
+        try? context?.save()
+        
+        // Aggiorna step attivo e sincronizza con Apple Watch
+        let firstStep = guideSteps.sorted(by: { $0.orderIndex < $1.orderIndex }).first
+        WatchConnectivityIOSManager.shared.setActiveStep(firstStep, for: self)
+    }
 }
 
 
@@ -1490,6 +1538,10 @@ struct GuideCompletionView: View {
     @Bindable var project: KnittingProject
     var onReviewGuide: () -> Void
     var onExit: () -> Void
+    var onRestartFromBeginning: (() -> Void)? = nil
+    
+    @Environment(\.modelContext) private var modelContext
+    @State private var showingRestartAlert = false
     
     private var sortedSteps: [GuideStep] {
         project.guideSteps.sorted { $0.orderIndex < $1.orderIndex }
@@ -1702,6 +1754,16 @@ struct GuideCompletionView: View {
                                 .frame(height: 44)
                         }
                         .foregroundColor(.secondary)
+                        
+                        Button(role: .destructive) {
+                            showingRestartAlert = true
+                        } label: {
+                            Label("Ricomincia da capo", systemImage: "arrow.counterclockwise")
+                                .font(.subheadline.bold())
+                                .foregroundColor(.red)
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 44)
+                        }
                     }
                     .padding(.horizontal)
                     .padding(.bottom, 24)
@@ -1718,6 +1780,19 @@ struct GuideCompletionView: View {
                             .foregroundColor(.secondary)
                     }
                 }
+            }
+            .alert("Ricomincia da capo", isPresented: $showingRestartAlert) {
+                Button("Annulla", role: .cancel) { }
+                Button("Ricomincia da capo", role: .destructive) {
+                    project.resetAllProgress(modelContext: modelContext)
+                    if let onRestart = onRestartFromBeginning {
+                        onRestart()
+                    } else {
+                        onReviewGuide()
+                    }
+                }
+            } message: {
+                Text("Sei sicuro di voler ricominciare \"\(project.title)\" da capo? Tutti i progressi, i contatori e il tempo registrato verranno azzerati.")
             }
         }
     }
@@ -2067,6 +2142,10 @@ struct GuideView: View {
                     onExit: {
                         showingCompletion = false
                         onExitProject()
+                    },
+                    onRestartFromBeginning: {
+                        showingCompletion = false
+                        currentStepIndex = 0
                     }
                 )
             }
@@ -3963,6 +4042,7 @@ struct ProjectDetailView: View {
     @State private var showingEditProject = false
     @State private var showingGaugeSheet = false
     @State private var showingAddStepSheet = false
+    @State private var showingRestartAlert = false
     @State private var showingDeleteAlert = false
     @State private var stepToEdit: GuideStep? = nil
     @State private var editedTitle = ""
@@ -4076,6 +4156,12 @@ struct ProjectDetailView: View {
                         Divider()
                         
                         Button(role: .destructive) {
+                            showingRestartAlert = true
+                        } label: {
+                            Label("Ricomincia da capo", systemImage: "arrow.counterclockwise")
+                        }
+                        
+                        Button(role: .destructive) {
                             showingDeleteAlert = true
                         } label: {
                             Label("Elimina Progetto", systemImage: "trash")
@@ -4151,6 +4237,15 @@ struct ProjectDetailView: View {
             }
             .presentationDetents([.medium, .large])
         }
+        .alert("Ricomincia da capo", isPresented: $showingRestartAlert) {
+            Button("Annulla", role: .cancel) { }
+            Button("Ricomincia da capo", role: .destructive) {
+                project.resetAllProgress(modelContext: modelContext)
+                currentGuideStepIndex = 0
+            }
+        } message: {
+            Text("Sei sicuro di voler ricominciare \"\(project.title)\" da capo? Tutti i progressi, i contatori e il tempo registrato verranno azzerati.")
+        }
         .alert("Elimina Progetto", isPresented: $showingDeleteAlert) {
             Button("Annulla", role: .cancel) { }
             Button("Elimina", role: .destructive) {
@@ -4212,6 +4307,8 @@ struct ProjectListView: View {
     @State private var showingRenameAlert = false
     @State private var projectToDelete: KnittingProject?
     @State private var showingDeleteAlert = false
+    @State private var projectToRestart: KnittingProject?
+    @State private var showingRestartAlert = false
     @State private var navigationPath: [UUID] = []
     
     private var activeProjectToResume: KnittingProject? {
@@ -4280,6 +4377,12 @@ struct ProjectListView: View {
                                         showingRenameAlert = true
                                     } label: {
                                         Label("Rinomina Progetto", systemImage: "pencil")
+                                    }
+                                    Button(role: .destructive) {
+                                        projectToRestart = resumeProject
+                                        showingRestartAlert = true
+                                    } label: {
+                                        Label("Ricomincia da capo", systemImage: "arrow.counterclockwise")
                                     }
                                     Button(role: .destructive) {
                                         projectToDelete = resumeProject
@@ -4369,6 +4472,12 @@ struct ProjectListView: View {
                                             showingRenameAlert = true
                                         } label: {
                                             Label("Rinomina Progetto", systemImage: "pencil")
+                                        }
+                                        Button(role: .destructive) {
+                                            projectToRestart = project
+                                            showingRestartAlert = true
+                                        } label: {
+                                            Label("Ricomincia da capo", systemImage: "arrow.counterclockwise")
                                         }
                                         Button(role: .destructive) {
                                             projectToDelete = project
@@ -4506,6 +4615,19 @@ struct ProjectListView: View {
                     }
                     projectToRename = nil
                 }
+            }
+            .alert("Ricomincia da capo", isPresented: $showingRestartAlert) {
+                Button("Annulla", role: .cancel) {
+                    projectToRestart = nil
+                }
+                Button("Ricomincia da capo", role: .destructive) {
+                    if let p = projectToRestart {
+                        p.resetAllProgress(modelContext: modelContext)
+                    }
+                    projectToRestart = nil
+                }
+            } message: {
+                Text("Sei sicuro di voler ricominciare \"\(projectToRestart?.title ?? "")\" da capo? Tutti i progressi, i contatori e il tempo registrato verranno azzerati.")
             }
             .alert("Elimina Progetto", isPresented: $showingDeleteAlert) {
                 Button("Annulla", role: .cancel) {
@@ -6936,6 +7058,18 @@ final class TimerManager {
         return duration
     }
     
+    /// Annulla il timer attivo per un determinato progetto senza salvarne il tempo lavorato
+    func cancelTimer(for projectId: UUID) {
+        guard activeProjectId == projectId else { return }
+        stopTicker()
+        isRunning = false
+        elapsedSecondsInCurrentSession = 0
+        sessionStartDate = nil
+        activeProjectId = nil
+        backgroundEntryDate = nil
+        WatchConnectivityIOSManager.shared.syncAllProjectsToWatch()
+    }
+    
     /// Scarica i secondi lavorati finora per consentire il salvataggio immediato in SwiftData
     /// reimpostando la data di riferimento per i secondi successivi, senza interrompere la sessione attiva.
     @discardableResult
@@ -9260,6 +9394,86 @@ final class KnittingProjectTests: XCTestCase {
         // Deve rimanere rigorosamente su step2, senza azzerarsi a step1
         XCTAssertEqual(manager.activeStepId, step2.id, "setActiveProject non deve sovrascrivere lo step attivo se il progetto non è cambiato")
     }
+    
+    func testResetAllProgressRestartsProjectFromBeginning() {
+        let project = KnittingProject(title: "Maglione Test Restart")
+        project.completedAt = Date()
+        project.totalSecondsWorked = 3600
+        context.insert(project)
+        
+        let session = TimerSession(startDate: Date().addingTimeInterval(-3600), endDate: Date(), durationSeconds: 3600)
+        session.project = project
+        project.timerSessions.append(session)
+        
+        let counter = RowCounter(title: "Contatore Globale", currentCount: 25)
+        counter.project = project
+        project.counters.append(counter)
+        
+        let step1 = GuideStep(
+            sectionTitle: "Avvio",
+            instructionText: "Avvia 100 maglie",
+            isCompleted: true,
+            orderIndex: 0,
+            hasCounter: true,
+            counterLabel: "Avvio",
+            counterKind: "stitch",
+            currentStepCount: 100,
+            targetStepCount: 100
+        )
+        step1.extraCounterLabels = ["Ripetizioni"]
+        step1.extraCounterValues = [4]
+        step1.completedAt = Date()
+        
+        let step2 = GuideStep(
+            sectionTitle: "Corpo",
+            instructionText: "Lavora 50 ferri",
+            isCompleted: true,
+            orderIndex: 1,
+            hasCounter: true,
+            currentStepCount: 50,
+            targetStepCount: 50
+        )
+        step2.completedAt = Date()
+        
+        step1.project = project
+        step2.project = project
+        project.guideSteps = [step1, step2]
+        
+        try? context.save()
+        
+        XCTAssertNotNil(project.completedAt)
+        XCTAssertEqual(project.totalSecondsWorked, 3600)
+        XCTAssertEqual(project.timerSessions.count, 1)
+        XCTAssertEqual(project.counters.first?.currentCount, 25)
+        XCTAssertEqual(step1.currentStepCount, 100)
+        XCTAssertTrue(step1.isCompleted)
+        XCTAssertEqual(step1.extraCounterValues, [4])
+        
+        // Esegui reset completo dei progressi
+        project.resetAllProgress(modelContext: context)
+        
+        // Verifica azzeramento totale
+        XCTAssertNil(project.completedAt, "completedAt deve essere resettato a nil")
+        XCTAssertEqual(project.totalSecondsWorked, 0, "totalSecondsWorked deve essere 0")
+        XCTAssertTrue(project.timerSessions.isEmpty, "timerSessions deve essere svuotato")
+        XCTAssertEqual(counter.currentCount, 0, "I contatori manuali devono essere azzerati")
+        
+        XCTAssertEqual(step1.currentStepCount, 0, "Il contatore dello step 1 deve essere 0")
+        XCTAssertFalse(step1.isCompleted, "Lo step 1 non deve risultare completato")
+        XCTAssertNil(step1.completedAt, "completedAt dello step 1 deve essere nil")
+        XCTAssertEqual(step1.extraCounterValues, [0], "Gli extra contatori devono essere azzerati a 0")
+        
+        XCTAssertEqual(step2.currentStepCount, 0, "Il contatore dello step 2 deve essere 0")
+        XCTAssertFalse(step2.isCompleted, "Lo step 2 non deve risultare completato")
+        XCTAssertNil(step2.completedAt, "completedAt dello step 2 deve essere nil")
+        
+        XCTAssertEqual(project.totalGuideRowsWorked, 0, "I ferri lavorati totali devono essere 0")
+        XCTAssertEqual(project.totalStitchesWorked, 0, "Le maglie lavorate totali devono essere 0")
+        XCTAssertEqual(project.globalProgress, 0.0, "Il progresso globale deve essere 0%")
+        
+        // Lo step attivo calcolato deve ritornare al primo step
+        XCTAssertEqual(project.activeWorkingStep()?.id, step1.id, "Lo step attivo deve tornare al primo step")
+    }
 }
 
 
@@ -9478,6 +9692,26 @@ final class TimerManagerTests: XCTestCase {
         // Lavoro accreditato: da -300s fino a (-120s + 60s) = -60s => 240s
         XCTAssertEqual(session.durationSeconds, 240, accuracy: 1.0)
         XCTAssertEqual(project.totalSecondsWorked, 240, accuracy: 1.0)
+    }
+    
+    func testCancelTimerStopsTimerWithoutSavingDuration() async throws {
+        let project = KnittingProject(title: "Progetto Test Cancel")
+        context.insert(project)
+        try context.save()
+        
+        TimerManager.shared.start(for: project.id)
+        XCTAssertTrue(TimerManager.shared.isRunning)
+        XCTAssertEqual(TimerManager.shared.activeProjectId, project.id)
+        
+        try await Task.sleep(nanoseconds: 30_000_000)
+        
+        TimerManager.shared.cancelTimer(for: project.id)
+        
+        XCTAssertFalse(TimerManager.shared.isRunning)
+        XCTAssertNil(TimerManager.shared.activeProjectId)
+        XCTAssertEqual(TimerManager.shared.elapsedSecondsInCurrentSession, 0)
+        XCTAssertEqual(project.totalSecondsWorked, 0)
+        XCTAssertTrue(project.timerSessions.isEmpty)
     }
 }
 

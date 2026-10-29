@@ -194,4 +194,52 @@ extension KnittingProject {
         }
         return sorted.first
     }
+    
+    /// Annulla tutti i progressi fatti nel progetto e lo riavvia da capo:
+    /// azzera i contatori delle schede guida, i contatori manuali, le sessioni e il tempo lavorato,
+    /// e riapre tutti i passaggi come non completati.
+    @MainActor
+    func resetAllProgress(modelContext: ModelContext? = nil) {
+        completedAt = nil
+        totalSecondsWorked = 0
+        updatedAt = Date()
+        
+        // Azzera timer attivo se associato a questo progetto
+        TimerManager.shared.cancelTimer(for: id)
+        
+        // Elimina le sessioni del timer registrate finora
+        let context = modelContext ?? self.modelContext
+        if let context = context {
+            for session in timerSessions {
+                context.delete(session)
+            }
+        }
+        timerSessions.removeAll()
+        
+        // Azzera i progressi di ogni scheda della guida
+        for step in guideSteps {
+            step.currentStepCount = 0
+            step.isCompleted = false
+            step.completedAt = nil
+            if !step.extraCounterLabels.isEmpty {
+                step.extraCounterValues = Array(repeating: 0, count: step.extraCounterLabels.count)
+            } else {
+                step.extraCounterValues.removeAll()
+            }
+        }
+        
+        // Azzera tutti i contatori del progetto
+        for counter in counters {
+            counter.currentCount = 0
+        }
+        
+        // Reset indice salvato in UserDefaults
+        UserDefaults.standard.removeObject(forKey: "purl_lab_last_guide_step_\(id)")
+        
+        try? context?.save()
+        
+        // Aggiorna step attivo e sincronizza con Apple Watch
+        let firstStep = guideSteps.sorted(by: { $0.orderIndex < $1.orderIndex }).first
+        WatchConnectivityIOSManager.shared.setActiveStep(firstStep, for: self)
+    }
 }

@@ -163,6 +163,18 @@ final class TimerManager {
         return duration
     }
     
+    /// Annulla il timer attivo per un determinato progetto senza salvarne il tempo lavorato
+    func cancelTimer(for projectId: UUID) {
+        guard activeProjectId == projectId else { return }
+        stopTicker()
+        isRunning = false
+        elapsedSecondsInCurrentSession = 0
+        sessionStartDate = nil
+        activeProjectId = nil
+        backgroundEntryDate = nil
+        WatchConnectivityIOSManager.shared.syncAllProjectsToWatch()
+    }
+    
     /// Scarica i secondi lavorati finora per consentire il salvataggio immediato in SwiftData
     /// reimpostando la data di riferimento per i secondi successivi, senza interrompere la sessione attiva.
     @discardableResult

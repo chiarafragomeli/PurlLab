@@ -16,6 +16,8 @@ struct ProjectListView: View {
     @State private var showingRenameAlert = false
     @State private var projectToDelete: KnittingProject?
     @State private var showingDeleteAlert = false
+    @State private var projectToRestart: KnittingProject?
+    @State private var showingRestartAlert = false
     @State private var navigationPath: [UUID] = []
     
     private var activeProjectToResume: KnittingProject? {
@@ -84,6 +86,12 @@ struct ProjectListView: View {
                                         showingRenameAlert = true
                                     } label: {
                                         Label("Rinomina Progetto", systemImage: "pencil")
+                                    }
+                                    Button(role: .destructive) {
+                                        projectToRestart = resumeProject
+                                        showingRestartAlert = true
+                                    } label: {
+                                        Label("Ricomincia da capo", systemImage: "arrow.counterclockwise")
                                     }
                                     Button(role: .destructive) {
                                         projectToDelete = resumeProject
@@ -173,6 +181,12 @@ struct ProjectListView: View {
                                             showingRenameAlert = true
                                         } label: {
                                             Label("Rinomina Progetto", systemImage: "pencil")
+                                        }
+                                        Button(role: .destructive) {
+                                            projectToRestart = project
+                                            showingRestartAlert = true
+                                        } label: {
+                                            Label("Ricomincia da capo", systemImage: "arrow.counterclockwise")
                                         }
                                         Button(role: .destructive) {
                                             projectToDelete = project
@@ -310,6 +324,19 @@ struct ProjectListView: View {
                     }
                     projectToRename = nil
                 }
+            }
+            .alert("Ricomincia da capo", isPresented: $showingRestartAlert) {
+                Button("Annulla", role: .cancel) {
+                    projectToRestart = nil
+                }
+                Button("Ricomincia da capo", role: .destructive) {
+                    if let p = projectToRestart {
+                        p.resetAllProgress(modelContext: modelContext)
+                    }
+                    projectToRestart = nil
+                }
+            } message: {
+                Text("Sei sicuro di voler ricominciare \"\(projectToRestart?.title ?? "")\" da capo? Tutti i progressi, i contatori e il tempo registrato verranno azzerati.")
             }
             .alert("Elimina Progetto", isPresented: $showingDeleteAlert) {
                 Button("Annulla", role: .cancel) {

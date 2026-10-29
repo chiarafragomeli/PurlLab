@@ -298,6 +298,10 @@ struct GuideView: View {
                     onExit: {
                         showingCompletion = false
                         onExitProject()
+                    },
+                    onRestartFromBeginning: {
+                        showingCompletion = false
+                        currentStepIndex = 0
                     }
                 )
             }
