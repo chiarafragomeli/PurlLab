@@ -171,7 +171,7 @@ struct WatchCounterView: View {
         .digitalCrownRotation(
             $crownValue,
             from: 0,
-            through: Double(max(project.targetCount ?? 999, 999)),
+            through: Double(max(project.targetCount ?? 999, max(project.currentCount + 100, 999))),
             by: 1.0,
             sensitivity: .medium,
             isContinuous: false,
@@ -336,6 +336,9 @@ struct WatchCounterView: View {
             .buttonStyle(.bordered)
         }
         .padding()
+        .onAppear {
+            watchManager.requestSyncFromPhone()
+        }
     }
     
     private func formatWatchTime(_ seconds: TimeInterval) -> String {

@@ -208,29 +208,35 @@ final class WatchConnectivityManager: NSObject, WCSessionDelegate {
         inFlightCommandsCount += 1
         
         if session.isReachable {
-            // Messaggio istantaneo real-time se iPhone è attivo e raggiungibile
-            session.sendMessage(message, replyHandler: { reply in
-                let syncData = reply["syncData"] as? Data
-                Task { @MainActor [weak self] in
-                    guard let self = self else { return }
-                    // Nel replyHandler decrementa inFlightCommandsCount PRIMA di chiamare handleSyncData (Patch 2a)
-                    self.inFlightCommandsCount = max(0, self.inFlightCommandsCount - 1)
-                    if let syncData = syncData {
-                        self.handleSyncData(syncData)
-                    }
-                }
-            }, errorHandler: { [message] _ in
-                Task { @MainActor [weak self] in
-                    self?.inFlightCommandsCount = max(0, (self?.inFlightCommandsCount ?? 1) - 1)
-                }
-                // In caso di errore temporaneo, salva e invia in background (deduplicato su iPhone tramite commandId)
-                WCSession.default.transferUserInfo(message)
-            })
+            Self.sendSessionMessageReachable(session, message: message)
         } else {
             inFlightCommandsCount = max(0, inFlightCommandsCount - 1)
             // Se iPhone è bloccato o in tasca, trasferisce in background
             session.transferUserInfo(message)
         }
+    }
+    
+    /// Helper nonisolated per garantire che i blocchi replyHandler ed errorHandler
+    /// non ereditino l'isolamento @MainActor evitando crash EXC_BREAKPOINT (dispatch_assert_queue_fail)
+    /// quando WCSession li invoca sulla propria coda in background.
+    private nonisolated static func sendSessionMessageReachable(_ session: WCSession, message: [String: Any]) {
+        session.sendMessage(message, replyHandler: { reply in
+            let syncData = reply["syncData"] as? Data
+            Task { @MainActor in
+                let manager = WatchConnectivityManager.shared
+                manager.inFlightCommandsCount = max(0, manager.inFlightCommandsCount - 1)
+                if let syncData = syncData {
+                    manager.handleSyncData(syncData)
+                }
+            }
+        }, errorHandler: { _ in
+            Task { @MainActor in
+                let manager = WatchConnectivityManager.shared
+                manager.inFlightCommandsCount = max(0, manager.inFlightCommandsCount - 1)
+            }
+            // In caso di errore temporaneo, salva e invia in background (deduplicato su iPhone tramite commandId)
+            session.transferUserInfo(message)
+        })
     }
     
     // MARK: - Aggiornamento Locale & Cache

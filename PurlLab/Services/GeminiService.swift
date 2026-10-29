@@ -111,9 +111,40 @@ final class GeminiService: @unchecked Sendable {
     static let shared = GeminiService()
     
     // MARK: - Modelli Gemini Centralizzati
-    static let primaryModel = "gemini-3-flash-preview"
-    static let fallbackModel = "gemini-2.5-flash"
+    // gemini-2.5-flash è il modello primario ad alta velocità e stabilità di produzione
+    // gemini-3-flash-preview funge da fallback avanzato
+    static let primaryModel = "gemini-2.5-flash"
+    static let fallbackModel = "gemini-3-flash-preview"
     static let candidateModels = [primaryModel, fallbackModel]
+    
+    // Sessione HTTP dedicata con timeout esteso a 180s per request
+    // per consentire ingestion PDF pesanti (base64) e generazione JSON complessa
+    // senza subire il timeout di default a 60s di URLSession.shared
+    private static let apiSession: URLSession = {
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 180
+        config.timeoutIntervalForResource = 300
+        config.networkServiceType = .responsiveData
+        return URLSession(configuration: config)
+    }()
+    
+    /// Costruisce una generationConfig ottimizzata per il modello:
+    /// - Gemini 3.x adotta `thinkingLevel: "low"` per evitare l'overhead del default "high" ed errori di parametri deprecati.
+    /// - Gemini 2.5 Flash adotta `thinkingBudget: 1024` per un ragionamento matematico rapido senza timeout.
+    private static func buildGenerationConfig(for model: String, schema: [String: Any], temperature: Double = 0.1) -> [String: Any] {
+        var config: [String: Any] = [
+            "response_mime_type": "application/json",
+            "response_schema": schema,
+            "temperature": temperature
+        ]
+        if model.contains("gemini-3") {
+            config["thinkingConfig"] = ["thinkingLevel": "low"]
+        } else {
+            config["thinkingConfig"] = ["thinkingBudget": 1024]
+        }
+        return config
+    }
+    
     private init() {}
     
     /// Rimuove eventuali traduzioni inglesi tra parentesi dai nomi delle sezioni (es. "Corpo (Body)" -> "Corpo").
@@ -131,7 +162,7 @@ final class GeminiService: @unchecked Sendable {
         
         // URL pulito: la chiave API è inviata cifrata solo nell'header TLS (x-goog-api-key)
         // per evitare che appaia in chiaro nei log proxy o cronologia URL
-        let urlString = "https://generativelanguage.googleapis.com/v1beta/models/\(Self.fallbackModel):generateContent"
+        let urlString = "https://generativelanguage.googleapis.com/v1beta/models/\(Self.primaryModel):generateContent"
         guard let url = URL(string: urlString) else { throw GeminiError.invalidURL }
         
         var request = URLRequest(url: url)
@@ -174,6 +205,10 @@ final class GeminiService: @unchecked Sendable {
         let sizeFilterPrompt = isSizeSpecified
             ? "Mostra SOLO i numeri per la taglia \"\(cleanSize)\"."
             : "Questo pattern non specifica taglie separate o è a taglia unica (es. sciarpa, coperta, scialle). Estrai i numeri e i passaggi esatti come indicati nel pattern per la taglia unica."
+        
+        guard pdfData.count <= 15_000_000 else {
+            throw GeminiError.invalidInput("Il file PDF supera la dimensione massima supportata (15 MB).")
+        }
         
         let base64Pdf = pdfData.base64EncodedString()
         
@@ -285,39 +320,6 @@ final class GeminiService: @unchecked Sendable {
             "required": ["patternTitle", "targetSize", "sections"]
         ]
         
-        let requestBody: [String: Any] = [
-            "contents": [
-                [
-                    "role": "user",
-                    "parts": [
-                        [
-                            "inline_data": [
-                                "mime_type": "application/pdf",
-                                "data": base64Pdf
-                            ]
-                        ],
-                        [
-                            "text": userPrompt
-                        ]
-                    ]
-                ]
-            ],
-            "system_instruction": [
-                "parts": [
-                    ["text": systemPrompt]
-                ]
-            ],
-            "generationConfig": [
-                "response_mime_type": "application/json",
-                "response_schema": jsonSchema,
-                "temperature": 0.1,
-                "thinkingConfig": [
-                    "thinkingBudget": 4096
-                ]
-            ]
-        ]
-        
-        let bodyData = try JSONSerialization.data(withJSONObject: requestBody)
         let candidateModels = Self.candidateModels
         var lastError: Error?
         
@@ -325,9 +327,36 @@ final class GeminiService: @unchecked Sendable {
             let urlString = "https://generativelanguage.googleapis.com/v1beta/models/\(model):generateContent"
             guard let url = URL(string: urlString) else { continue }
             
+            let requestBody: [String: Any] = [
+                "contents": [
+                    [
+                        "role": "user",
+                        "parts": [
+                            [
+                                "inline_data": [
+                                    "mime_type": "application/pdf",
+                                    "data": base64Pdf
+                                ]
+                            ],
+                            [
+                                "text": userPrompt
+                            ]
+                        ]
+                    ]
+                ],
+                "system_instruction": [
+                    "parts": [
+                        ["text": systemPrompt]
+                    ]
+                ],
+                "generationConfig": Self.buildGenerationConfig(for: model, schema: jsonSchema, temperature: 0.1)
+            ]
+            
+            guard let bodyData = try? JSONSerialization.data(withJSONObject: requestBody) else { continue }
+            
             var request = URLRequest(url: url)
             request.httpMethod = "POST"
-            request.timeoutInterval = 60
+            request.timeoutInterval = 180
             request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
             request.networkServiceType = .responsiveData
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -335,7 +364,7 @@ final class GeminiService: @unchecked Sendable {
             request.httpBody = bodyData
             
             do {
-                let (data, response) = try await URLSession.shared.data(for: request)
+                let (data, response) = try await Self.apiSession.data(for: request)
                 guard let httpResponse = response as? HTTPURLResponse else {
                     continue
                 }
@@ -380,7 +409,11 @@ final class GeminiService: @unchecked Sendable {
             } catch let geminiErr as GeminiError {
                 throw geminiErr
             } catch {
-                lastError = error
+                if let urlErr = error as? URLError, urlErr.code == .timedOut {
+                    lastError = GeminiError.networkError("Tempo di attesa scaduto (timeout). Il pattern è molto complesso o la connessione è lenta. Riprova.")
+                } else {
+                    lastError = error
+                }
                 continue
             }
         }
@@ -490,24 +523,6 @@ final class GeminiService: @unchecked Sendable {
             "required": ["recalculationSummary", "steps"]
         ]
         
-        let requestBody: [String: Any] = [
-            "contents": [
-                ["role": "user", "parts": [["text": userPrompt]]]
-            ],
-            "system_instruction": [
-                "parts": [["text": systemPrompt]]
-            ],
-            "generationConfig": [
-                "response_mime_type": "application/json",
-                "response_schema": jsonSchema,
-                "temperature": 0.0,
-                "thinkingConfig": [
-                    "thinkingBudget": 4096
-                ]
-            ]
-        ]
-        
-        let bodyData = try JSONSerialization.data(withJSONObject: requestBody)
         let candidateModels = Self.candidateModels
         var lastError: Error?
         
@@ -515,9 +530,21 @@ final class GeminiService: @unchecked Sendable {
             let urlString = "https://generativelanguage.googleapis.com/v1beta/models/\(model):generateContent"
             guard let url = URL(string: urlString) else { continue }
             
+            let requestBody: [String: Any] = [
+                "contents": [
+                    ["role": "user", "parts": [["text": userPrompt]]]
+                ],
+                "system_instruction": [
+                    "parts": [["text": systemPrompt]]
+                ],
+                "generationConfig": Self.buildGenerationConfig(for: model, schema: jsonSchema, temperature: 0.0)
+            ]
+            
+            guard let bodyData = try? JSONSerialization.data(withJSONObject: requestBody) else { continue }
+            
             var request = URLRequest(url: url)
             request.httpMethod = "POST"
-            request.timeoutInterval = 60
+            request.timeoutInterval = 180
             request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
             request.networkServiceType = .responsiveData
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -525,7 +552,7 @@ final class GeminiService: @unchecked Sendable {
             request.httpBody = bodyData
             
             do {
-                let (data, response) = try await URLSession.shared.data(for: request)
+                let (data, response) = try await Self.apiSession.data(for: request)
                 guard let httpResponse = response as? HTTPURLResponse else { continue }
                 
                 if httpResponse.statusCode == 200 {
