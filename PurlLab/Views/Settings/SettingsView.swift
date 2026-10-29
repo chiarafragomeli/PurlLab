@@ -57,15 +57,16 @@ struct SettingsView: View {
                         .padding(.vertical, 4)
                     }
                     
-                    Button {
-                        apiKey = KeychainHelper.defaultVerifiedKey
-                        _ = KeychainHelper.shared.saveGeminiApiKey(apiKey)
-                        isKeySaved = true
-                        testApiKey(apiKey)
+                    Button(role: .destructive) {
+                        KeychainHelper.shared.deleteGeminiApiKey()
+                        apiKey = ""
+                        isKeySaved = false
+                        testResult = nil
                     } label: {
-                        Label("Ripristina Chiave Predefinita", systemImage: "arrow.counterclockwise")
+                        Label("Elimina Chiave Salvata", systemImage: "trash")
                             .font(.caption)
                     }
+                    .disabled(!isKeySaved && apiKey.isEmpty)
                     
                     Link(destination: URL(string: "https://aistudio.google.com/app/apikey")!) {
                         HStack {
@@ -123,9 +124,8 @@ struct SettingsView: View {
                     apiKey = saved
                     isKeySaved = true
                 } else {
-                    apiKey = KeychainHelper.defaultVerifiedKey
-                    _ = KeychainHelper.shared.saveGeminiApiKey(apiKey)
-                    isKeySaved = true
+                    apiKey = ""
+                    isKeySaved = false
                 }
                 autoPauseMinutes = TimerManager.shared.autoPauseMinutes
             }

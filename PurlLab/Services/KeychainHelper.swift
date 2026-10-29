@@ -12,8 +12,6 @@ final class KeychainHelper: @unchecked Sendable {
         UserDefaults.standard.removeObject(forKey: geminiKeyAccount)
     }
     
-    static let defaultVerifiedKey = "REDACTED_GEMINI_API_KEY"
-    
     /// Salva la chiave API esclusivamente nel Secure Enclave / Keychain di iOS
     /// con protezione vincolata a questo singolo dispositivo (non esportabile in backup non cifrati)
     func saveGeminiApiKey(_ key: String) -> Bool {
@@ -28,18 +26,25 @@ final class KeychainHelper: @unchecked Sendable {
             kSecAttrAccount as String: geminiKeyAccount
         ]
         
-        SecItemDelete(query as CFDictionary)
+        let attributesToUpdate: [String: Any] = [
+            kSecValueData as String: data,
+            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+        ]
+        
+        let updateStatus = SecItemUpdate(query as CFDictionary, attributesToUpdate as CFDictionary)
+        if updateStatus == errSecSuccess {
+            return true
+        }
         
         var newQuery = query
         newQuery[kSecValueData as String] = data
-        // Protezione massima: accessibile solo dopo il primo sblocco e vincolato a questo specifico dispositivo
         newQuery[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
         
-        let status = SecItemAdd(newQuery as CFDictionary, nil)
-        return status == errSecSuccess
+        let addStatus = SecItemAdd(newQuery as CFDictionary, nil)
+        return addStatus == errSecSuccess
     }
     
-    /// Recupera la chiave API dal Keychain di sistema
+    /// Recupera la chiave API dal Keychain di sistema senza effetti collaterali
     func getGeminiApiKey() -> String? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
@@ -53,17 +58,10 @@ final class KeychainHelper: @unchecked Sendable {
         let status = SecItemCopyMatching(query as CFDictionary, &dataTypeRef)
         
         if status == errSecSuccess, let data = dataTypeRef as? Data, let str = String(data: data, encoding: .utf8), !str.isEmpty {
-            // Se nel keychain era rimasta una chiave legacy non valida, ripristina la chiave verificata
-            if str.hasPrefix("REDACTED_GEMINI_API_KEY") {
-                _ = saveGeminiApiKey(Self.defaultVerifiedKey)
-                return Self.defaultVerifiedKey
-            }
             return str
         }
         
-        // Se non ancora presente nel Keychain, salva la chiave predefinita in modo sicuro
-        _ = saveGeminiApiKey(Self.defaultVerifiedKey)
-        return Self.defaultVerifiedKey
+        return nil
     }
     
     /// Rimuove la chiave API dal Keychain di sistema

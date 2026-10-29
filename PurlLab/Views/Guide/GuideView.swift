@@ -1705,13 +1705,6 @@ struct GenerateGuideSheet: View {
             }
             .alert("Errore Generazione", isPresented: .constant(errorMessage != nil)) {
                 Button("Annulla", role: .cancel) { errorMessage = nil }
-                if errorMessage?.contains("401") == true {
-                    Button("Usa Chiave Predefinita e Riprova") {
-                        errorMessage = nil
-                        _ = KeychainHelper.shared.saveGeminiApiKey(KeychainHelper.defaultVerifiedKey)
-                        generateGuide()
-                    }
-                }
                 Button("Crea Guida Locale (Offline)") {
                     errorMessage = nil
                     generateOfflineGuide()
