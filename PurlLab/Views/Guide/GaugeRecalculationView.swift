@@ -119,7 +119,7 @@ struct GaugeRecalculationView: View {
                 .font(.title3.bold())
                 .multilineTextAlignment(.center)
             
-            Text("Inserisci il campione ottenuto con il tuo filato. Se non coincide con quello del pattern, l'AI ricalcola maglie di avvio, aumenti raglan, ferri e ripetizioni per mantenere perfetta la taglia **\(project.selectedSize.isEmpty ? "M" : project.selectedSize)**.")
+            Text("Inserisci il campione ottenuto con il tuo filato. Se non coincide con quello del pattern, l'AI ricalcola maglie di avvio, aumenti raglan, ferri e ripetizioni per mantenere perfette le proporzioni del progetto\(project.selectedSize.isEmpty ? "" : " per la taglia **" + project.selectedSize + "**").")
                 .font(.footnote)
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
@@ -322,7 +322,7 @@ struct GaugeRecalculationView: View {
                     Text("Pattern Ricalcolato con Successo!")
                         .font(.headline)
                         .foregroundColor(.green)
-                    Text("Taglia \(project.selectedSize.isEmpty ? "M" : project.selectedSize) ricalibrata sul tuo campione")
+                    Text(project.selectedSize.isEmpty ? "Guida ricalibrata sul tuo campione" : "Taglia \(project.selectedSize) ricalibrata sul tuo campione")
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }

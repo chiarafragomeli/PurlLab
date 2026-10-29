@@ -159,7 +159,7 @@ final class GeminiService: @unchecked Sendable {
         }
     }
     
-    func generateGuide(from pdfData: Data, targetSize: String) async throws -> GeneratedGuideResponse {
+    func generateGuide(from pdfData: Data, targetSize: String? = nil) async throws -> GeneratedGuideResponse {
         guard let rawKey = KeychainHelper.shared.getGeminiApiKey(), !rawKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw GeminiError.missingApiKey
         }
@@ -169,11 +169,17 @@ final class GeminiService: @unchecked Sendable {
             throw GeminiError.invalidApiKeyFormat
         }
         
+        let cleanSize = targetSize?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let isSizeSpecified = !cleanSize.isEmpty
+        let sizeFilterPrompt = isSizeSpecified
+            ? "Mostra SOLO i numeri per la taglia \"\(cleanSize)\"."
+            : "Questo pattern non specifica taglie separate o è a taglia unica (es. sciarpa, coperta, scialle). Estrai i numeri e i passaggi esatti come indicati nel pattern per la taglia unica."
+        
         let base64Pdf = pdfData.base64EncodedString()
         
         let systemPrompt = """
         Sei una maestra di maglia (knitting) ed editor tecnica esperta.
-        Il tuo compito è trasformare il pattern PDF in una GUIDA OPERATIVA INTERATTIVA a "Scheda Singola" (una card per ogni fase operativa reale) in LINGUA ITALIANA per la TAGLIA "\(targetSize)".
+        Il tuo compito è trasformare il pattern PDF in una GUIDA OPERATIVA INTERATTIVA a "Scheda Singola" (una card per ogni fase operativa reale) in LINGUA ITALIANA\(isSizeSpecified ? " per la TAGLIA \"\(cleanSize)\"" : " (taglia unica o come da pattern)").
         
         RAGIONA SU COSA DEVE FARE FISICAMENTE CHI LAVORA A MAGLIA:
         
@@ -212,12 +218,14 @@ final class GeminiService: @unchecked Sendable {
              * Posizionamento iniziale dei marcapunti o semplice cambio ferri senza lavorazione prolungata.
         
         4. FILTRO TAGLIA E GLOSSARIO ITALIANO:
-           - Mostra SOLO i numeri per la taglia "\(targetSize)".
+           - \(sizeFilterPrompt)
            - I nomi delle sezioni ("name") e i titoli delle schede devono essere SOLO in italiano, SENZA la traduzione inglese tra parentesi (es. "Corpo" e NON "Corpo (Body)", "Sprone" e NON "Sprone (Yoke)", "Maniche" e NON "Maniche (Sleeves)").
            - Usa i termini italiani: dir (diritto), rov (rovescio), 2 dir ins (k2tog), 2 dir ins ritorto / acc (ssk / k2tog tbl), AID (M1R), AIS (M1L), MP (marcapunti), ferri accorciati alla tedesca (German short rows).
         """
         
-        let userPrompt = "Analizza il pattern PDF per la taglia \(targetSize) e genera la guida operativa JSON completa in italiano, calcolando con precisione ferri totali, ripetizioni e maglie."
+        let userPrompt = isSizeSpecified
+            ? "Analizza il pattern PDF per la taglia \(cleanSize) e genera la guida operativa JSON completa in italiano, calcolando con precisione ferri totali, ripetizioni e maglie."
+            : "Analizza il pattern PDF (a taglia unica / standard) e genera la guida operativa JSON completa in italiano, calcolando con precisione ferri totali, ripetizioni e maglie."
         
         let jsonSchema: [String: Any] = [
             "type": "OBJECT",

@@ -57,37 +57,39 @@ struct GuideView: View {
                     ContentUnavailableView {
                         Label("Nessuna Guida", systemImage: "sparkles")
                     } description: {
-                        Text("Carica la guida operativa del No Frills Sweater, generane una nuova da PDF con Gemini o aggiungi manualmente sezioni e passaggi.")
+                        Text(project.pdfData != nil ? "Genera la guida interattiva passo-passo dal PDF con l'AI oppure crea le tue schede manualmente." : "Crea le tue schede operative e i contatori manualmente.")
                     } actions: {
                         VStack(spacing: 12) {
-                            Button {
-                                loadPreloadedGuide()
-                            } label: {
-                                Label("Carica Guida No Frills (Taglia M)", systemImage: "sparkles")
-                                    .bold()
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 4)
+                            if project.pdfData != nil {
+                                Button {
+                                    showingGenerateSheet = true
+                                } label: {
+                                    Label("Sviluppa Guida da PDF con AI", systemImage: "sparkles")
+                                        .bold()
+                                        .frame(maxWidth: .infinity)
+                                        .padding(.vertical, 4)
+                                }
+                                .buttonStyle(.borderedProminent)
+                                
+                                Button {
+                                    showingAddStepSheet = true
+                                } label: {
+                                    Label("Aggiungi Scheda Manualmente", systemImage: "plus.circle")
+                                        .frame(maxWidth: .infinity)
+                                        .padding(.vertical, 4)
+                                }
+                                .buttonStyle(.bordered)
+                            } else {
+                                Button {
+                                    showingAddStepSheet = true
+                                } label: {
+                                    Label("Aggiungi Scheda Manualmente", systemImage: "plus.circle")
+                                        .bold()
+                                        .frame(maxWidth: .infinity)
+                                        .padding(.vertical, 4)
+                                }
+                                .buttonStyle(.borderedProminent)
                             }
-                            .buttonStyle(.borderedProminent)
-                            
-                            Button {
-                                showingAddStepSheet = true
-                            } label: {
-                                Label("Aggiungi Sezione Manualmente", systemImage: "plus.circle")
-                                    .frame(maxWidth: .infinity)
-                            }
-                            .buttonStyle(.bordered)
-                            
-                            Button {
-                                showingGenerateSheet = true
-                            } label: {
-                                Label("Genera con Gemini AI", systemImage: "brain")
-                                    .frame(maxWidth: .infinity)
-                            }
-                            .buttonStyle(.plain)
-                            .foregroundColor(.secondary)
-                            .padding(.top, 4)
-                            .disabled(project.pdfData == nil)
                         }
                         .padding(.horizontal, 24)
                     }
@@ -1638,16 +1640,16 @@ struct GenerateGuideSheet: View {
     @Environment(\.modelContext) private var modelContext
     var project: KnittingProject
     
-    @State private var targetSize: String = "M"
+    @State private var targetSize: String = ""
     @State private var isProcessing: Bool = false
     @State private var errorMessage: String?
     
     var body: some View {
         NavigationStack {
             Form {
-                Section("Taglia Desiderata") {
-                    TextField("Es. XS, S, M, L, XL...", text: $targetSize)
-                    Text("Gemini analizzerà il pattern calcolando ferri ripetuti, maglie e contatori per la taglia scelta.")
+                Section("Taglia Desiderata (Opzionale)") {
+                    TextField("Es. XS, S, M, L... (lascia vuoto se taglia unica)", text: $targetSize)
+                    Text("Se il pattern prevede più taglie specifica quella desiderata. Se il lavoro non prevede taglie (es. sciarpa, coperta, scialle o taglia unica), lascia pure il campo vuoto.")
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
@@ -1699,7 +1701,12 @@ struct GenerateGuideSheet: View {
                         generateGuide()
                     }
                     .bold()
-                    .disabled(targetSize.trimmingCharacters(in: .whitespaces).isEmpty || isProcessing)
+                    .disabled(isProcessing)
+                }
+            }
+            .onAppear {
+                if !project.selectedSize.isEmpty {
+                    targetSize = project.selectedSize
                 }
             }
             .alert("Errore Generazione", isPresented: .constant(errorMessage != nil)) {
@@ -1721,13 +1728,14 @@ struct GenerateGuideSheet: View {
         }
         
         isProcessing = true
+        let chosenSize = targetSize.trimmingCharacters(in: .whitespaces)
         
         Task {
             do {
-                let response = try await GeminiService.shared.generateGuide(from: pdfData, targetSize: targetSize)
+                let response = try await GeminiService.shared.generateGuide(from: pdfData, targetSize: chosenSize)
                 
                 await MainActor.run {
-                    project.selectedSize = targetSize
+                    project.selectedSize = chosenSize
                     if project.title.isEmpty || project.title == "Nuovo Progetto" {
                         project.title = response.patternTitle
                     }
@@ -1760,6 +1768,7 @@ struct GenerateGuideSheet: View {
                                 orderIndex: stepOrder,
                                 hasCounter: stepData.hasCounter ?? false,
                                 counterLabel: stepData.counterLabel,
+                                counterKind: stepData.counterKind,
                                 currentStepCount: 0,
                                 targetStepCount: stepData.targetStepCount
                             )
@@ -1769,6 +1778,8 @@ struct GenerateGuideSheet: View {
                         }
                     }
                     
+                    try? modelContext.save()
+                    WatchConnectivityIOSManager.shared.setActiveStep(project.activeWorkingStep(), for: project)
                     isProcessing = false
                     dismiss()
                 }
@@ -1786,9 +1797,10 @@ struct GenerateGuideSheet: View {
             modelContext.delete(step)
         }
         project.guideSteps.removeAll()
-        project.selectedSize = targetSize.isEmpty ? "M" : targetSize
+        project.selectedSize = targetSize.trimmingCharacters(in: .whitespaces)
         
         let titleLower = project.title.lowercased()
+        let sizeNotice = project.selectedSize.isEmpty ? "" : " per la tua taglia " + project.selectedSize
         
         // Se è Sophie Scarf o una sciarpa/scialle
         if titleLower.contains("sophie") || titleLower.contains("scarf") {
@@ -1854,8 +1866,8 @@ struct GenerateGuideSheet: View {
             // Struttura modulare universale per qualsiasi pattern PDF caricato
             let defaultSteps: [(sec: String, title: String, text: String, counter: Bool, label: String?, target: Int?)] = [
                 ("Preparazione", "Campione e Materiali", "Verifica la tensione del campione dopo il bloccaggio e prepara i ferri e i marcapunti indicati nel pattern PDF.", false, nil, nil),
-                ("Avvio e Bordi", "Avvio Maglie", "Avvia il numero di maglie richiesto per la tua taglia \(project.selectedSize) e lavora il bordo iniziale.", true, "Maglie Avviate", 100),
-                ("Lavorazione Principale", "Corpo del Lavoro", "Lavora il motivo principale seguendo le istruzioni della pagina PDF indicata per la tua taglia.", true, "Ferri / Giri Lavorati", 60),
+                ("Avvio e Bordi", "Avvio Maglie", "Avvia il numero di maglie richiesto\(sizeNotice) e lavora il bordo iniziale.", true, "Maglie Avviate", 100),
+                ("Lavorazione Principale", "Corpo del Lavoro", "Lavora il motivo principale seguendo le istruzioni della pagina PDF indicata\(sizeNotice).", true, "Ferri / Giri Lavorati", 60),
                 ("Modellatura", "Aumenti / Diminuzioni", "Esegui le calature o gli aumenti previsti dal pattern ad intervalli regolari.", true, "Ripetizioni / Ferri", 20),
                 ("Finiture", "Intreccio e Bloccaggio", "Intreccia le maglie morbidamente secondo il motivo, cuci o rifinisci e blocca il capo.", true, "Maglie Intrecciate", 100)
             ]

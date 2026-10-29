@@ -17,7 +17,6 @@ struct ProjectListView: View {
     @State private var projectToDelete: KnittingProject?
     @State private var showingDeleteAlert = false
     @State private var navigationPath: [UUID] = []
-    @AppStorage("didAutoLoadSampleV4") private var didAutoLoadSampleV4 = false
     
     private var activeProjectToResume: KnittingProject? {
         projects.first(where: { $0.completedAt == nil }) ?? projects.first
@@ -34,9 +33,9 @@ struct ProjectListView: View {
                     } actions: {
                         VStack(spacing: 12) {
                             Button {
-                                loadSamplePattern()
+                                showingFilePicker = true
                             } label: {
-                                Label("Carica No Frills Sweater (Test)", systemImage: "sparkles")
+                                Label("Importa Pattern PDF da File", systemImage: "doc.badge.plus")
                                     .bold()
                                     .frame(maxWidth: .infinity)
                                     .padding(.vertical, 4)
@@ -44,9 +43,9 @@ struct ProjectListView: View {
                             .buttonStyle(.borderedProminent)
                             
                             Button {
-                                showingFilePicker = true
+                                showingManualNewProject = true
                             } label: {
-                                Label("Importa Altro Pattern da File", systemImage: "doc.badge.plus")
+                                Label("Crea Nuovo Progetto Manuale", systemImage: "plus.rectangle")
                                     .frame(maxWidth: .infinity)
                             }
                             .buttonStyle(.bordered)
@@ -229,11 +228,6 @@ struct ProjectListView: View {
                             counter.title = "Contatore Globale"
                         }
                     }
-                }
-                
-                if projects.isEmpty && !didAutoLoadSampleV4 {
-                    didAutoLoadSampleV4 = true
-                    loadSamplePattern()
                 }
             }
             .toolbar {
