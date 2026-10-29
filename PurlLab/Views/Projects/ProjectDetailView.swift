@@ -127,6 +127,7 @@ struct ProjectDetailView: View {
     @State private var showingEditProject = false
     @State private var showingGaugeSheet = false
     @State private var showingAddStepSheet = false
+    @State private var showingDeleteAlert = false
     @State private var editedTitle = ""
     @State private var editedDesigner = ""
     @State private var editedSize = ""
@@ -216,6 +217,14 @@ struct ProjectDetailView: View {
                         } label: {
                             Label("Adatta al Campione (AI)...", systemImage: "gauge.with.needle")
                         }
+                        
+                        Divider()
+                        
+                        Button(role: .destructive) {
+                            showingDeleteAlert = true
+                        } label: {
+                            Label("Elimina Progetto", systemImage: "trash")
+                        }
                     } label: {
                         Image(systemName: "ellipsis.circle")
                             .font(.body)
@@ -236,6 +245,21 @@ struct ProjectDetailView: View {
                         TextField("Nome del Progetto", text: $editedTitle)
                         TextField("Designer (opzionale)", text: $editedDesigner)
                         TextField("Taglia (es. M, S, L...)", text: $editedSize)
+                    }
+                    
+                    Section {
+                        Button(role: .destructive) {
+                            showingEditProject = false
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                                showingDeleteAlert = true
+                            }
+                        } label: {
+                            HStack {
+                                Spacer()
+                                Label("Elimina Progetto", systemImage: "trash")
+                                Spacer()
+                            }
+                        }
                     }
                 }
                 .navigationTitle("Modifica Progetto")
@@ -260,7 +284,18 @@ struct ProjectDetailView: View {
                     }
                 }
             }
-            .presentationDetents([.medium])
+            .presentationDetents([.medium, .large])
+        }
+        .alert("Elimina Progetto", isPresented: $showingDeleteAlert) {
+            Button("Annulla", role: .cancel) { }
+            Button("Elimina", role: .destructive) {
+                dismiss()
+                modelContext.delete(project)
+                try? modelContext.save()
+                WatchConnectivityIOSManager.shared.syncAllProjectsToWatch()
+            }
+        } message: {
+            Text("Sei sicuro di voler eliminare \"\(project.title)\"? L'azione è irreversibile e cancellerà tutte le schede e i contatori associati.")
         }
         .onAppear {
             let sorted = project.guideSteps.sorted(by: { $0.orderIndex < $1.orderIndex })

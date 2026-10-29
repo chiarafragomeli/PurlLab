@@ -14,6 +14,8 @@ struct ProjectListView: View {
     @State private var projectToRename: KnittingProject?
     @State private var renameTitle = ""
     @State private var showingRenameAlert = false
+    @State private var projectToDelete: KnittingProject?
+    @State private var showingDeleteAlert = false
     @State private var navigationPath: [UUID] = []
     @AppStorage("didAutoLoadSampleV4") private var didAutoLoadSampleV4 = false
     
@@ -57,6 +59,39 @@ struct ProjectListView: View {
                             Section {
                                 ResumeProjectHeroCard(project: resumeProject) {
                                     navigationPath = [resumeProject.id]
+                                }
+                                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                    Button(role: .destructive) {
+                                        projectToDelete = resumeProject
+                                        showingDeleteAlert = true
+                                    } label: {
+                                        Label("Elimina", systemImage: "trash")
+                                    }
+                                }
+                                .swipeActions(edge: .leading) {
+                                    Button {
+                                        projectToRename = resumeProject
+                                        renameTitle = resumeProject.title
+                                        showingRenameAlert = true
+                                    } label: {
+                                        Label("Rinomina", systemImage: "pencil")
+                                    }
+                                    .tint(.indigo)
+                                }
+                                .contextMenu {
+                                    Button {
+                                        projectToRename = resumeProject
+                                        renameTitle = resumeProject.title
+                                        showingRenameAlert = true
+                                    } label: {
+                                        Label("Rinomina Progetto", systemImage: "pencil")
+                                    }
+                                    Button(role: .destructive) {
+                                        projectToDelete = resumeProject
+                                        showingDeleteAlert = true
+                                    } label: {
+                                        Label("Elimina Progetto", systemImage: "trash")
+                                    }
                                 }
                                 .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 8, trailing: 16))
                                 .listRowBackground(Color.clear)
@@ -114,6 +149,14 @@ struct ProjectListView: View {
                                     NavigationLink(value: project.id) {
                                         ProjectRowView(project: project)
                                     }
+                                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                        Button(role: .destructive) {
+                                            projectToDelete = project
+                                            showingDeleteAlert = true
+                                        } label: {
+                                            Label("Elimina", systemImage: "trash")
+                                        }
+                                    }
                                     .swipeActions(edge: .leading) {
                                         Button {
                                             projectToRename = project
@@ -133,9 +176,8 @@ struct ProjectListView: View {
                                             Label("Rinomina Progetto", systemImage: "pencil")
                                         }
                                         Button(role: .destructive) {
-                                            if let idx = projects.firstIndex(where: { $0.id == project.id }) {
-                                                deleteProjects(at: IndexSet(integer: idx))
-                                            }
+                                            projectToDelete = project
+                                            showingDeleteAlert = true
                                         } label: {
                                             Label("Elimina Progetto", systemImage: "trash")
                                         }
@@ -270,6 +312,27 @@ struct ProjectListView: View {
                     projectToRename = nil
                 }
             }
+            .alert("Elimina Progetto", isPresented: $showingDeleteAlert) {
+                Button("Annulla", role: .cancel) {
+                    projectToDelete = nil
+                }
+                Button("Elimina", role: .destructive) {
+                    if let p = projectToDelete {
+                        deleteProject(p)
+                    }
+                    projectToDelete = nil
+                }
+            } message: {
+                Text("Sei sicuro di voler eliminare \"\(projectToDelete?.title ?? "questo progetto")\"? L'azione è irreversibile e cancellerà tutte le schede e i contatori associati.")
+            }
+        }
+    }
+    
+    private func deleteProject(_ project: KnittingProject) {
+        if let idx = projects.firstIndex(where: { $0.id == project.id }) {
+            modelContext.delete(projects[idx])
+            try? modelContext.save()
+            WatchConnectivityIOSManager.shared.syncAllProjectsToWatch()
         }
     }
     
@@ -277,6 +340,8 @@ struct ProjectListView: View {
         for index in offsets {
             modelContext.delete(projects[index])
         }
+        try? modelContext.save()
+        WatchConnectivityIOSManager.shared.syncAllProjectsToWatch()
     }
     
     private func loadSamplePattern() {
