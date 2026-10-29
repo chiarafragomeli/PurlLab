@@ -1,7 +1,20 @@
 import Foundation
 import WatchConnectivity
+#if os(watchOS)
 import WatchKit
+private func playHaptic(_ type: WKHapticType) {
+    WKInterfaceDevice.current().play(type)
+}
+#else
+private enum WKHapticType {
+    case click, success, directionDown, start, stop
+}
+private func playHaptic(_ type: WKHapticType) {}
+#endif
 import SwiftUI
+#if !os(watchOS)
+@testable import PurlLab
+#endif
 
 @MainActor
 @Observable
@@ -12,6 +25,7 @@ final class WatchConnectivityManager: NSObject, WCSessionDelegate {
     var activeProjectId: String? = nil
     var isConnectedToPhone: Bool = false
     var lastSyncDate: Date? = nil
+    private(set) var inFlightCommandsCount: Int = 0
     
     private let userDefaultsKey = "purl_lab_watch_cache_v2"
     
@@ -50,9 +64,9 @@ final class WatchConnectivityManager: NSObject, WCSessionDelegate {
         
         // Haptic click piacevole per ogni ferro
         if current.isTargetReached {
-            WKInterfaceDevice.current().play(.success)
+            playHaptic(.success)
         } else {
-            WKInterfaceDevice.current().play(.click)
+            playHaptic(.click)
         }
         
         var payload: [String: Any] = ["newCount": current.currentCount]
@@ -69,7 +83,7 @@ final class WatchConnectivityManager: NSObject, WCSessionDelegate {
         current.currentCount -= 1
         if current.totalRowsWorked > 0 { current.totalRowsWorked -= 1 }
         updateProjectLocally(current)
-        WKInterfaceDevice.current().play(.directionDown)
+        playHaptic(.directionDown)
         
         var payload: [String: Any] = ["newCount": current.currentCount]
         if let stepId = current.activeStepId {
@@ -79,12 +93,29 @@ final class WatchConnectivityManager: NSObject, WCSessionDelegate {
         sendCommand(.decrementMainCounter, projectId: current.id, data: payload)
     }
     
-    /// Imposta direttamente un valore (es. tramite Digital Crown)
+    /// Aggiorna il contatore solo in locale (es. per rotazione Digital Crown con aggiornamento immediato UI)
+    func updateMainCounterLocally(to value: Int) {
+        guard var current = activeProject, value >= 0, current.currentCount != value else { return }
+        current.currentCount = value
+        updateProjectLocally(current)
+    }
+    
+    /// Invia il comando di impostazione contatore assoluto a iPhone
+    func sendSetMainCounterCommand(to value: Int) {
+        guard let current = activeProject, value >= 0 else { return }
+        var payload: [String: Any] = ["newCount": value]
+        if let stepId = current.activeStepId {
+            payload["stepId"] = stepId
+        }
+        sendCommand(.setMainCounter, projectId: current.id, data: payload)
+    }
+    
+    /// Imposta direttamente un valore (es. tramite Digital Crown o input manuale)
     func setMainCounter(to value: Int) {
         guard var current = activeProject, value >= 0, current.currentCount != value else { return }
         current.currentCount = value
         updateProjectLocally(current)
-        WKInterfaceDevice.current().play(.click)
+        playHaptic(.click)
         
         var payload: [String: Any] = ["newCount": value]
         if let stepId = current.activeStepId {
@@ -97,7 +128,7 @@ final class WatchConnectivityManager: NSObject, WCSessionDelegate {
     /// Passa alla scheda/sezione successiva della guida
     func nextStep() {
         guard let current = activeProject, current.canGoNext else { return }
-        WKInterfaceDevice.current().play(.click)
+        playHaptic(.click)
         var payload: [String: Any] = [:]
         if let stepId = current.activeStepId { payload["stepId"] = stepId }
         sendCommand(.nextStep, projectId: current.id, data: payload)
@@ -106,7 +137,7 @@ final class WatchConnectivityManager: NSObject, WCSessionDelegate {
     /// Torna alla scheda/sezione precedente della guida
     func previousStep() {
         guard let current = activeProject, current.canGoPrevious else { return }
-        WKInterfaceDevice.current().play(.click)
+        playHaptic(.click)
         var payload: [String: Any] = [:]
         if let stepId = current.activeStepId { payload["stepId"] = stepId }
         sendCommand(.previousStep, projectId: current.id, data: payload)
@@ -115,7 +146,7 @@ final class WatchConnectivityManager: NSObject, WCSessionDelegate {
     /// Segna la scheda corrente come completata e avanza alla successiva
     func completeStep() {
         guard let current = activeProject else { return }
-        WKInterfaceDevice.current().play(.success)
+        playHaptic(.success)
         var payload: [String: Any] = [:]
         if let stepId = current.activeStepId { payload["stepId"] = stepId }
         sendCommand(.completeStep, projectId: current.id, data: payload)
@@ -128,7 +159,7 @@ final class WatchConnectivityManager: NSObject, WCSessionDelegate {
         current.isTimerRunning = newRunningState
         updateProjectLocally(current)
         
-        WKInterfaceDevice.current().play(newRunningState ? .start : .stop)
+        playHaptic(newRunningState ? .start : .stop)
         
         sendCommand(
             newRunningState ? .startTimer : .pauseTimer,
@@ -141,7 +172,7 @@ final class WatchConnectivityManager: NSObject, WCSessionDelegate {
     func selectProject(id: String) {
         activeProjectId = id
         saveLocalCache()
-        WKInterfaceDevice.current().play(.click)
+        playHaptic(.click)
         sendCommand(.selectProject, projectId: id, data: [:])
     }
     
@@ -150,48 +181,80 @@ final class WatchConnectivityManager: NSObject, WCSessionDelegate {
         sendCommand(.requestFullSync, projectId: activeProjectId ?? "", data: [:])
     }
     
+    /// Segnala l'inizio del debounce della corona contando il periodo come "in volo" (Patch 2b)
+    func beginCrownDebounce() {
+        inFlightCommandsCount += 1
+    }
+    
+    /// Segnala la fine del debounce della corona
+    func endCrownDebounce() {
+        inFlightCommandsCount = max(0, inFlightCommandsCount - 1)
+    }
+    
     // MARK: - Invio Comandi a iPhone via WatchConnectivity
-    nonisolated private func sendCommand(_ command: WatchCommandType, projectId: String, data: [String: Any]) {
+    private func sendCommand(_ command: WatchCommandType, projectId: String, data: [String: Any]) {
         guard WCSession.isSupported() else { return }
         let session = WCSession.default
+        let commandId = UUID().uuidString
         
         var message: [String: Any] = [
+            "commandId": commandId,
             "command": command.rawValue,
             "projectId": projectId,
             "timestamp": Date().timeIntervalSince1970
         ]
         for (k, v) in data { message[k] = v }
         
+        inFlightCommandsCount += 1
+        
         if session.isReachable {
             // Messaggio istantaneo real-time se iPhone è attivo e raggiungibile
-            session.sendMessage(message, replyHandler: { [weak self] reply in
+            session.sendMessage(message, replyHandler: { reply in
                 let syncData = reply["syncData"] as? Data
-                Task { @MainActor in
-                    if let syncData {
-                        self?.handleSyncData(syncData)
+                Task { @MainActor [weak self] in
+                    guard let self = self else { return }
+                    // Nel replyHandler decrementa inFlightCommandsCount PRIMA di chiamare handleSyncData (Patch 2a)
+                    self.inFlightCommandsCount = max(0, self.inFlightCommandsCount - 1)
+                    if let syncData = syncData {
+                        self.handleSyncData(syncData)
                     }
                 }
             }, errorHandler: { [message] _ in
-                // In caso di errore temporaneo, salva e invia in background
+                Task { @MainActor [weak self] in
+                    self?.inFlightCommandsCount = max(0, (self?.inFlightCommandsCount ?? 1) - 1)
+                }
+                // In caso di errore temporaneo, salva e invia in background (deduplicato su iPhone tramite commandId)
                 WCSession.default.transferUserInfo(message)
             })
         } else {
+            inFlightCommandsCount = max(0, inFlightCommandsCount - 1)
             // Se iPhone è bloccato o in tasca, trasferisce in background
             session.transferUserInfo(message)
         }
     }
     
     // MARK: - Aggiornamento Locale & Cache
-    private func updateProjectLocally(_ updated: WatchProjectSummary) {
+    func updateProjectLocally(_ updated: WatchProjectSummary) {
         if let idx = projects.firstIndex(where: { $0.id == updated.id }) {
             projects[idx] = updated
         } else {
             projects.append(updated)
         }
-        saveLocalCache()
+        debounceSaveLocalCache()
     }
     
-    private func saveLocalCache() {
+    private var saveCacheTask: Task<Void, Never>?
+    
+    func debounceSaveLocalCache() {
+        saveCacheTask?.cancel()
+        saveCacheTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 300_000_000)
+            guard !Task.isCancelled else { return }
+            self.saveLocalCache()
+        }
+    }
+    
+    func saveLocalCache() {
         let state = WatchSyncState(
             projects: projects,
             activeProjectId: activeProjectId,
@@ -211,24 +274,45 @@ final class WatchConnectivityManager: NSObject, WCSessionDelegate {
         self.activeProjectId = state.activeProjectId
     }
     
-    private func handleSyncData(_ data: Data) {
+    func handleSyncData(_ data: Data) {
         guard let state = try? JSONDecoder().decode(WatchSyncState.self, from: data) else {
             return
         }
-        self.projects = state.projects
+        // Confronto timestamp (ALTO-05): scarta pacchetti obsoleti arrivati in ritardo
+        if let last = self.lastSyncDate, state.timestamp < last {
+            return
+        }
+        
+        // Se ci sono comandi in volo residui DOPO il decremento, proteggi il contatore del progetto attivo locale
+        // per evitare che risposte intermedie o sync ritardate sovrascrivano i tap rapidi dell'utente (Patch 2a/2b).
+        // Se inFlightCommandsCount == 0 (es. reply dell'ultimo comando in volo),
+        // accetta integralmente lo stato dell'iPhone riallineando currentCount, totali e step attivo.
+        if inFlightCommandsCount > 0, let activeId = self.activeProjectId,
+           let localActive = self.projects.first(where: { $0.id == activeId }) {
+            var updatedProjects = state.projects
+            if let idx = updatedProjects.firstIndex(where: { $0.id == activeId }) {
+                updatedProjects[idx].currentCount = localActive.currentCount
+                updatedProjects[idx].totalRowsWorked = localActive.totalRowsWorked
+                updatedProjects[idx].totalStitchesWorked = localActive.totalStitchesWorked
+            }
+            self.projects = updatedProjects
+        } else {
+            self.projects = state.projects
+        }
+        
         if let newActive = state.activeProjectId {
             self.activeProjectId = newActive
         }
         self.lastSyncDate = state.timestamp
-        self.saveLocalCache()
+        self.debounceSaveLocalCache()
     }
     
     // MARK: - WCSessionDelegate
     nonisolated func session(_ session: WCSession, activationDidCompleteWith activationState: WCSessionActivationState, error: Error?) {
-        let isActivated = (activationState == .activated)
+        let isReachable = session.isReachable
         Task { @MainActor in
-            self.isConnectedToPhone = isActivated
-            if isActivated {
+            self.isConnectedToPhone = isReachable
+            if isReachable {
                 self.requestSyncFromPhone()
             }
         }
@@ -270,4 +354,11 @@ final class WatchConnectivityManager: NSObject, WCSessionDelegate {
             }
         }
     }
+    
+#if os(iOS)
+    nonisolated func sessionDidBecomeInactive(_ session: WCSession) {}
+    nonisolated func sessionDidDeactivate(_ session: WCSession) {
+        WCSession.default.activate()
+    }
+#endif
 }

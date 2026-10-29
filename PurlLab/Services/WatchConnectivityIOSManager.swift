@@ -17,6 +17,65 @@ final class WatchConnectivityIOSManager: NSObject, WCSessionDelegate {
     public private(set) var activeProjectId: UUID?
     private var activeStepIdsByProject: [UUID: UUID] = [:]
     
+    // Deduplicazione comandi Watch tramite cache LRU (CRIT-02)
+    private var processedCommandIds: [String] = []
+    private let maxProcessedCommands = 200
+    
+    // Mappa stepId -> ultimo timestamp per ordinamento temporale comandi contatore (Patch 2a)
+    private var lastAppliedTimestampByStepId: [String: TimeInterval] = [:]
+    
+    // Debounce per updateApplicationContext (~200ms) evitando flood del bus WCSession (Patch 2c)
+    private var appContextDebounceTask: Task<Void, Never>?
+    private var pendingSyncDataForAppContext: Data?
+    
+    func isDuplicateCommand(_ commandId: String?) -> Bool {
+        guard let commandId = commandId, !commandId.isEmpty else { return false }
+        if processedCommandIds.contains(commandId) {
+            return true
+        }
+        processedCommandIds.append(commandId)
+        if processedCommandIds.count > maxProcessedCommands {
+            processedCommandIds.removeFirst(processedCommandIds.count - maxProcessedCommands)
+        }
+        return false
+    }
+    
+    func isStaleCounterCommand(stepKey: String, timestamp: TimeInterval?) -> Bool {
+        guard let timestamp = timestamp else { return false }
+        if let lastTimestamp = lastAppliedTimestampByStepId[stepKey], timestamp < lastTimestamp {
+            return true
+        }
+        return false
+    }
+    
+    func recordAppliedTimestamp(stepKey: String, timestamp: TimeInterval?) {
+        guard let timestamp = timestamp else { return }
+        lastAppliedTimestampByStepId[stepKey] = timestamp
+    }
+    
+    private func scheduleDebouncedApplicationContextUpdate(syncData: Data) {
+        pendingSyncDataForAppContext = syncData
+        appContextDebounceTask?.cancel()
+        appContextDebounceTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 200_000_000)
+            guard !Task.isCancelled else { return }
+            guard WCSession.isSupported() else { return }
+            let session = WCSession.default
+            guard session.activationState == .activated, let data = self.pendingSyncDataForAppContext else { return }
+            try? session.updateApplicationContext(["syncData": data])
+        }
+    }
+    
+    private func currentSyncData(for projects: [KnittingProject]) -> Data? {
+        let summaries = projects.map { buildProjectSummary(for: $0) }
+        let state = WatchSyncState(
+            projects: summaries,
+            activeProjectId: self.activeProjectId?.uuidString ?? summaries.first?.id,
+            timestamp: Date()
+        )
+        return try? JSONEncoder().encode(state)
+    }
+    
     public var activeStepId: UUID? {
         get {
             guard let projId = activeProjectId else { return nil }
@@ -82,7 +141,7 @@ final class WatchConnectivityIOSManager: NSObject, WCSessionDelegate {
     // MARK: - Invio Dati a Apple Watch
     
     /// Trasmette lo stato aggiornato di tutti i progetti a Apple Watch
-    func syncAllProjectsToWatch() {
+    func syncAllProjectsToWatch(preferRealtime: Bool = true) {
         guard WCSession.isSupported(), let context = modelContext else { return }
         let session = WCSession.default
         guard session.activationState == .activated else { return }
@@ -103,13 +162,13 @@ final class WatchConnectivityIOSManager: NSObject, WCSessionDelegate {
         )
         
         guard let syncData = try? JSONEncoder().encode(syncState) else { return }
-        let payload: [String: Any] = ["syncData": syncData]
         
-        // Aggiorna l'applicationContext garantendo che l'orologio riceva sempre lo stato più recente
-        try? session.updateApplicationContext(payload)
+        // Aggiorna l'applicationContext con debounce (~200ms) evitando contesa del canale WCSession
+        scheduleDebouncedApplicationContextUpdate(syncData: syncData)
         
-        // Se l'orologio è raggiungibile in tempo reale, invia subito
-        if session.isReachable {
+        // Se preferRealtime è vero e l'orologio è raggiungibile, trasmette subito via sendMessage
+        if preferRealtime && session.isReachable {
+            let payload: [String: Any] = ["syncData": syncData]
             session.sendMessage(payload, replyHandler: nil, errorHandler: nil)
         }
     }
@@ -164,12 +223,14 @@ final class WatchConnectivityIOSManager: NSObject, WCSessionDelegate {
     
     // MARK: - Gestione Comandi Ricevuti da Apple Watch
     @discardableResult
-    private func handleIncomingCommand(
+    func handleIncomingCommand(
         commandRaw: String?,
         projectId: String?,
         stepId: String?,
         newCount: Int?,
-        index: Int?
+        index: Int?,
+        commandId: String? = nil,
+        timestamp: TimeInterval? = nil
     ) -> Data? {
         guard let commandRaw = commandRaw,
               let command = WatchCommandType(rawValue: commandRaw),
@@ -177,13 +238,20 @@ final class WatchConnectivityIOSManager: NSObject, WCSessionDelegate {
             return nil
         }
         
-        let projUUID = projectId.flatMap { UUID(uuidString: $0) }
-        let descriptor = FetchDescriptor<KnittingProject>()
-        guard let allProjects = try? context.fetch(descriptor) else { return nil }
+        let descriptor = FetchDescriptor<KnittingProject>(sortBy: [SortDescriptor(\.updatedAt, order: .reverse)])
+        guard let allProjects = try? context.fetch(descriptor), !allProjects.isEmpty else { return nil }
         
+        // Deduplica comandi tramite ID univoco (idempotenza contro duplicati da retry WCSession)
+        if let cmdId = commandId, isDuplicateCommand(cmdId) {
+            return currentSyncData(for: allProjects)
+        }
+        
+        let projUUID = projectId.flatMap { UUID(uuidString: $0) }
         let targetProject: KnittingProject?
-        if let uuid = projUUID {
-            targetProject = allProjects.first(where: { $0.id == uuid })
+        if let uuid = projUUID, let match = allProjects.first(where: { $0.id == uuid }) {
+            targetProject = match
+        } else if let activeId = self.activeProjectId, let match = allProjects.first(where: { $0.id == activeId }) {
+            targetProject = match
         } else {
             targetProject = allProjects.first
         }
@@ -218,14 +286,39 @@ final class WatchConnectivityIOSManager: NSObject, WCSessionDelegate {
             self.activeStepId = currentStep?.id
         }
         
+        // Ordinamento temporale: sui comandi che impostano un contatore scarta quelli con timestamp obsoleto (Patch 2a)
+        let isCounterCommand: Bool
+        switch command {
+        case .incrementMainCounter, .decrementMainCounter, .setMainCounter:
+            isCounterCommand = true
+        default:
+            isCounterCommand = false
+        }
+        
+        let effectiveStepKey = stepId ?? currentStep?.id.uuidString ?? "project_\(project.id.uuidString)"
+        if isCounterCommand, let cmdTimestamp = timestamp {
+            if isStaleCounterCommand(stepKey: effectiveStepKey, timestamp: cmdTimestamp) {
+                return currentSyncData(for: allProjects)
+            }
+            recordAppliedTimestamp(stepKey: effectiveStepKey, timestamp: cmdTimestamp)
+        }
+        
         let currentStepIdx = currentStep.flatMap { step in sortedSteps.firstIndex(where: { $0.id == step.id }) } ?? 0
         
         switch command {
         case .incrementMainCounter:
-            if let step = currentStep {
-                step.currentStepCount += 1
-            } else if let globalCounter = project.counters.first {
-                globalCounter.increment()
+            if let count = newCount {
+                if let step = currentStep {
+                    step.currentStepCount = max(0, count)
+                } else if let globalCounter = project.counters.first {
+                    globalCounter.currentCount = max(0, count)
+                }
+            } else {
+                if let step = currentStep {
+                    step.currentStepCount += 1
+                } else if let globalCounter = project.counters.first {
+                    globalCounter.increment()
+                }
             }
             // Sincronizza eventuale Contatore Globale in project.counters
             updateGlobalRowCounter(for: project)
@@ -235,10 +328,18 @@ final class WatchConnectivityIOSManager: NSObject, WCSessionDelegate {
             NotificationCenter.default.post(name: .watchDidUpdateCounter, object: nil, userInfo: ["projectId": project.id, "stepId": currentStep?.id as Any])
             
         case .decrementMainCounter:
-            if let step = currentStep, step.currentStepCount > 0 {
-                step.currentStepCount -= 1
-            } else if let globalCounter = project.counters.first {
-                globalCounter.decrement()
+            if let count = newCount {
+                if let step = currentStep {
+                    step.currentStepCount = max(0, count)
+                } else if let globalCounter = project.counters.first {
+                    globalCounter.currentCount = max(0, count)
+                }
+            } else {
+                if let step = currentStep, step.currentStepCount > 0 {
+                    step.currentStepCount -= 1
+                } else if let globalCounter = project.counters.first {
+                    globalCounter.decrement()
+                }
             }
             updateGlobalRowCounter(for: project)
             project.updatedAt = Date()
@@ -345,8 +446,7 @@ final class WatchConnectivityIOSManager: NSObject, WCSessionDelegate {
             }
         }
         
-        syncAllProjectsToWatch()
-        
+        // Costruzione sommari e stato UNA SOLA VOLTA per comando con singola codifica (Patch 2c)
         let summaries: [WatchProjectSummary] = allProjects.map { p in
             buildProjectSummary(for: p)
         }
@@ -355,7 +455,12 @@ final class WatchConnectivityIOSManager: NSObject, WCSessionDelegate {
             activeProjectId: self.activeProjectId?.uuidString ?? summaries.first?.id,
             timestamp: Date()
         )
-        return try? JSONEncoder().encode(state)
+        guard let syncData = try? JSONEncoder().encode(state) else { return nil }
+        
+        // Aggiorna l'applicationContext con debounce (~200ms) evitando flood di WCSession
+        scheduleDebouncedApplicationContextUpdate(syncData: syncData)
+        
+        return syncData
     }
     
     /// Mantiene allineato il Contatore Globale memorizzato in RowCounter (se presente)
@@ -385,15 +490,17 @@ final class WatchConnectivityIOSManager: NSObject, WCSessionDelegate {
     }
     
     nonisolated func session(_ session: WCSession, didReceiveMessage message: [String : Any], replyHandler: @escaping ([String : Any]) -> Void) {
+        let commandId = message["commandId"] as? String
         let commandRaw = message["command"] as? String
         let projectId = message["projectId"] as? String
         let stepId = message["stepId"] as? String
         let newCount = message["newCount"] as? Int
         let index = message["index"] as? Int
+        let timestamp = message["timestamp"] as? TimeInterval
         nonisolated(unsafe) let safeReplyHandler = replyHandler
         
         Task { @MainActor in
-            if let replyData = self.handleIncomingCommand(commandRaw: commandRaw, projectId: projectId, stepId: stepId, newCount: newCount, index: index) {
+            if let replyData = self.handleIncomingCommand(commandRaw: commandRaw, projectId: projectId, stepId: stepId, newCount: newCount, index: index, commandId: commandId, timestamp: timestamp) {
                 safeReplyHandler(["syncData": replyData])
             } else {
                 safeReplyHandler([:])
@@ -402,14 +509,16 @@ final class WatchConnectivityIOSManager: NSObject, WCSessionDelegate {
     }
     
     nonisolated func session(_ session: WCSession, didReceiveUserInfo userInfo: [String : Any] = [:]) {
+        let commandId = userInfo["commandId"] as? String
         let commandRaw = userInfo["command"] as? String
         let projectId = userInfo["projectId"] as? String
         let stepId = userInfo["stepId"] as? String
         let newCount = userInfo["newCount"] as? Int
         let index = userInfo["index"] as? Int
+        let timestamp = userInfo["timestamp"] as? TimeInterval
         
         Task { @MainActor in
-            _ = self.handleIncomingCommand(commandRaw: commandRaw, projectId: projectId, stepId: stepId, newCount: newCount, index: index)
+            _ = self.handleIncomingCommand(commandRaw: commandRaw, projectId: projectId, stepId: stepId, newCount: newCount, index: index, commandId: commandId, timestamp: timestamp)
         }
     }
 }

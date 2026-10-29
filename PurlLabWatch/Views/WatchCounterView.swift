@@ -5,6 +5,8 @@ struct WatchCounterView: View {
     @Bindable var watchManager = WatchConnectivityManager.shared
     @State private var crownValue: Double = 0
     @State private var showingProjectList = false
+    @State private var crownDebounceTask: Task<Void, Never>? = nil
+    @State private var isCrownDebouncing = false
     
     private var project: WatchProjectSummary? {
         watchManager.activeProject
@@ -176,9 +178,30 @@ struct WatchCounterView: View {
             isHapticFeedbackEnabled: true
         )
         .onChange(of: crownValue) { _, newValue in
-            let intVal = Int(newValue)
+            let intVal = max(0, Int(newValue))
             if intVal != project.currentCount {
-                watchManager.setMainCounter(to: intVal)
+                // Aggiornamento locale immediato per zero latenza visiva (Patch 2d)
+                watchManager.updateMainCounterLocally(to: intVal)
+                if !isCrownDebouncing {
+                    isCrownDebouncing = true
+                    watchManager.beginCrownDebounce()
+                }
+                crownDebounceTask?.cancel()
+                crownDebounceTask = Task {
+                    try? await Task.sleep(nanoseconds: 250_000_000)
+                    guard !Task.isCancelled else { return }
+                    isCrownDebouncing = false
+                    watchManager.endCrownDebounce()
+                    // Trasmette a iPhone solo a rotazione ultimata
+                    watchManager.sendSetMainCounterCommand(to: intVal)
+                }
+            }
+        }
+        .onDisappear {
+            if isCrownDebouncing {
+                isCrownDebouncing = false
+                crownDebounceTask?.cancel()
+                watchManager.endCrownDebounce()
             }
         }
     }
