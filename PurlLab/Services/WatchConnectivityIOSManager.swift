@@ -61,7 +61,7 @@ final class WatchConnectivityIOSManager: NSObject, WCSessionDelegate {
             guard !Task.isCancelled else { return }
             guard WCSession.isSupported() else { return }
             let session = WCSession.default
-            guard session.activationState == .activated, let data = self.pendingSyncDataForAppContext else { return }
+            guard session.activationState == .activated, session.isPaired, session.isWatchAppInstalled, let data = self.pendingSyncDataForAppContext else { return }
             try? session.updateApplicationContext(["syncData": data])
         }
     }
@@ -146,7 +146,7 @@ final class WatchConnectivityIOSManager: NSObject, WCSessionDelegate {
     func syncAllProjectsToWatch(preferRealtime: Bool = true) {
         guard WCSession.isSupported(), let context = modelContext else { return }
         let session = WCSession.default
-        guard session.activationState == .activated else { return }
+        guard session.activationState == .activated, session.isPaired, session.isWatchAppInstalled else { return }
         
         let descriptor = FetchDescriptor<KnittingProject>(sortBy: [SortDescriptor(\.updatedAt, order: .reverse)])
         guard let projects = try? context.fetch(descriptor) else { return }

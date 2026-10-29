@@ -21,6 +21,7 @@ final class KnittingProjectTests: XCTestCase {
     }
     
     override func tearDown() async throws {
+        WatchConnectivityIOSManager.shared.configure(with: nil)
         container = nil
         context = nil
     }
@@ -37,6 +38,58 @@ final class KnittingProjectTests: XCTestCase {
         project.guideSteps = [step1, step2]
         
         XCTAssertEqual(project.totalGuideRowsWorked, 30)
+    }
+    
+    func testTotalGuideRowsWorkedExcludesStitchCounters() {
+        let project = KnittingProject(title: "Test Esclusione Maglie da Ferri")
+        context.insert(project)
+        
+        // Step 1: Avvio maglie con counterKind = "stitch" (114 maglie avviate)
+        let step1 = GuideStep(
+            sectionTitle: "Avvio",
+            instructionText: "Avvia 114 maglie",
+            orderIndex: 0,
+            hasCounter: true,
+            counterLabel: "Avvio",
+            counterKind: "stitch",
+            currentStepCount: 114,
+            targetStepCount: 114
+        )
+        
+        // Step 2: Bordo collo con counterKind = "row" (10 ferri lavorati su 20)
+        let step2 = GuideStep(
+            sectionTitle: "Bordo Collo",
+            instructionText: "Lavora a coste 1x1",
+            orderIndex: 1,
+            hasCounter: true,
+            counterLabel: "Ferri",
+            counterKind: "row",
+            currentStepCount: 10,
+            targetStepCount: 20
+        )
+        
+        // Step 3: Ripresa maglie con counterKind nil ma counterLabel "Maglie Riprese"
+        let step3 = GuideStep(
+            sectionTitle: "Bordo Manica",
+            instructionText: "Riprendi 54 maglie",
+            orderIndex: 2,
+            hasCounter: true,
+            counterLabel: "Maglie Riprese",
+            counterKind: nil,
+            currentStepCount: 54,
+            targetStepCount: 54
+        )
+        
+        step1.project = project
+        step2.project = project
+        step3.project = project
+        project.guideSteps = [step1, step2, step3]
+        
+        // totalGuideRowsWorked deve contare SOLO i ferri (step2 = 10), escludendo step1 (114 maglie) e step3 (54 maglie)
+        XCTAssertEqual(project.totalGuideRowsWorked, 10, "I contatori di maglie non devono essere sommati al totale dei ferri lavorati")
+        
+        // targetTotalRows deve contare SOLO l'obiettivo ferri (step2 = 20), escludendo step1 e step3
+        XCTAssertEqual(project.targetTotalRows, 20, "I contatori di maglie non devono essere inclusi nell'obiettivo ferri totale")
     }
     
     func testTotalGuideRowsWorkedFallbackToGlobalCounter() {

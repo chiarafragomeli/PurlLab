@@ -57,4 +57,70 @@ final class GuideStepTests: XCTestCase {
         XCTAssertTrue(step.isCompleted)
         XCTAssertNotNil(step.completedAt)
     }
+    
+    func testCounterKindAndIsStitchCounter() {
+        // 1. Esplicito counterKind = "stitch"
+        let stitchStep = GuideStep(
+            sectionTitle: "Avvio",
+            instructionText: "Avvia 114 maglie",
+            counterLabel: "Avvio",
+            counterKind: "stitch",
+            currentStepCount: 114,
+            targetStepCount: 114
+        )
+        XCTAssertTrue(stitchStep.isStitchCounter)
+        
+        // 2. Esplicito counterKind = "maglie" o "punto"
+        let maglieStep = GuideStep(
+            sectionTitle: "Aumenti",
+            instructionText: "Aumenta",
+            counterKind: "maglie"
+        )
+        XCTAssertTrue(maglieStep.isStitchCounter)
+        
+        // 3. counterKind = "row"
+        let rowStep = GuideStep(
+            sectionTitle: "Sprone",
+            instructionText: "Lavora 20 ferri",
+            counterLabel: "Ferri Sprone",
+            counterKind: "row"
+        )
+        XCTAssertFalse(rowStep.isStitchCounter)
+        
+        // 4. Fallback su counterLabel contenente "maglie" quando counterKind è nil
+        let legacyStitchStep = GuideStep(
+            sectionTitle: "Avvio",
+            instructionText: "Avvia",
+            counterLabel: "Maglie Avviate",
+            counterKind: nil
+        )
+        XCTAssertTrue(legacyStitchStep.isStitchCounter)
+        
+        // 5. Fallback su counterLabel ferri quando counterKind è nil
+        let legacyRowStep = GuideStep(
+            sectionTitle: "Bordo",
+            instructionText: "Lavora",
+            counterLabel: "Ferri a Coste",
+            counterKind: nil
+        )
+        XCTAssertFalse(legacyRowStep.isStitchCounter)
+    }
+    
+    func testSafeAccessorsPreventDetachedCrashes() {
+        let step = GuideStep(
+            sectionTitle: "Test Detached",
+            instructionText: "Istruzioni",
+            subSteps: ["Passo 1", "Passo 2"],
+            repeatVariations: ["Var 1"]
+        )
+        step.extraCounterLabels = ["Contatore 1"]
+        step.extraCounterValues = [3]
+        
+        // Quando non collegato o eliminato, i safe accessors restituiscono liste vuote senza causare crash
+        XCTAssertTrue(step.isDetachedOrDeleted)
+        XCTAssertEqual(step.safeSubSteps, [])
+        XCTAssertEqual(step.safeRepeatVariations, [])
+        XCTAssertEqual(step.safeExtraCounterLabels, [])
+        XCTAssertEqual(step.safeExtraCounterValues, [])
+    }
 }

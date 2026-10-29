@@ -21,6 +21,7 @@ final class GuideStep {
     var orderIndex: Int
     var hasCounter: Bool = false
     var counterLabel: String?
+    var counterKind: String? = nil
     var currentStepCount: Int = 0
     var targetStepCount: Int?
     /// Contatori aggiuntivi aggiunti manualmente dall'utente su questa scheda
@@ -54,6 +55,15 @@ final class GuideStep {
         return extraCounterValues
     }
     
+    /// Determina se questo contatore tiene traccia di maglie invece che di ferri/giri
+    var isStitchCounter: Bool {
+        if let kind = counterKind?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(), !kind.isEmpty {
+            return kind == "stitch" || kind == "maglia" || kind == "maglie" || kind == "punto" || kind == "punti"
+        }
+        let label = (counterLabel ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return label.contains("magli") || label.contains("punti") || label.contains("stitch")
+    }
+    
     init(
         sectionTitle: String,
         title: String = "",
@@ -72,6 +82,7 @@ final class GuideStep {
         orderIndex: Int = 0,
         hasCounter: Bool = false,
         counterLabel: String? = nil,
+        counterKind: String? = nil,
         currentStepCount: Int = 0,
         targetStepCount: Int? = nil
     ) {
@@ -93,6 +104,7 @@ final class GuideStep {
         self.orderIndex = orderIndex
         self.hasCounter = hasCounter
         self.counterLabel = counterLabel
+        self.counterKind = counterKind
         self.currentStepCount = currentStepCount
         self.targetStepCount = targetStepCount
     }

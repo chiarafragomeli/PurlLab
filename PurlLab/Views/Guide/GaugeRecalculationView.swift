@@ -435,8 +435,8 @@ struct GaugeRecalculationView: View {
                 title: step.title,
                 stepType: step.stepType,
                 instruction: step.instructionText,
-                subSteps: step.subSteps,
-                repeatVariations: step.repeatVariations,
+                subSteps: step.safeSubSteps,
+                repeatVariations: step.safeRepeatVariations,
                 rowsPerRepeat: step.rowsPerRepeat,
                 totalRepeats: step.totalRepeats,
                 stitchCountBefore: step.stitchCountBefore,
@@ -444,6 +444,7 @@ struct GaugeRecalculationView: View {
                 targetMeasureCm: step.targetMeasureCm,
                 hasCounter: step.hasCounter,
                 counterLabel: step.counterLabel,
+                counterKind: step.counterKind,
                 targetStepCount: step.targetStepCount,
                 sourcePage: step.sourcePage,
                 sourceQuote: step.sourceQuote
@@ -657,8 +658,8 @@ struct GaugeGuideManager {
                 title: step.title,
                 stepType: step.stepType,
                 instruction: step.instructionText,
-                subSteps: step.subSteps,
-                repeatVariations: step.repeatVariations,
+                subSteps: step.safeSubSteps,
+                repeatVariations: step.safeRepeatVariations,
                 rowsPerRepeat: step.rowsPerRepeat,
                 totalRepeats: step.totalRepeats,
                 stitchCountBefore: step.stitchCountBefore,
@@ -666,6 +667,7 @@ struct GaugeGuideManager {
                 targetMeasureCm: step.targetMeasureCm,
                 hasCounter: step.hasCounter,
                 counterLabel: step.counterLabel,
+                counterKind: step.counterKind,
                 targetStepCount: step.targetStepCount,
                 sourcePage: step.sourcePage,
                 sourceQuote: step.sourceQuote
@@ -701,6 +703,7 @@ struct GaugeGuideManager {
         existing.targetMeasureCm = stepData.targetMeasureCm
         if let hc = stepData.hasCounter { existing.hasCounter = hc }
         existing.counterLabel = stepData.counterLabel
+        if let ck = stepData.counterKind { existing.counterKind = ck }
         existing.targetStepCount = stepData.targetStepCount
         if let sp = stepData.sourcePage { existing.sourcePage = sp }
         if let sq = stepData.sourceQuote { existing.sourceQuote = sq }
@@ -804,6 +807,7 @@ struct GaugeGuideManager {
                     orderIndex: orderIndex,
                     hasCounter: stepData.hasCounter ?? false,
                     counterLabel: stepData.counterLabel,
+                    counterKind: stepData.counterKind,
                     currentStepCount: 0,
                     targetStepCount: stepData.targetStepCount
                 )
@@ -898,6 +902,7 @@ struct GaugeGuideManager {
                     orderIndex: orderIndex,
                     hasCounter: stepData.hasCounter ?? false,
                     counterLabel: stepData.counterLabel,
+                    counterKind: stepData.counterKind,
                     currentStepCount: 0,
                     targetStepCount: stepData.targetStepCount
                 )

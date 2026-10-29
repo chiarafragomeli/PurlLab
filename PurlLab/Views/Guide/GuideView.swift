@@ -1013,12 +1013,12 @@ struct CardCounterBoxView: View {
             }
             
             // Contatori aggiuntivi creati manualmente dall'utente
-            if !step.extraCounterLabels.isEmpty {
+            if !step.safeExtraCounterLabels.isEmpty {
                 Divider()
-                ForEach(Array(step.extraCounterLabels.enumerated()), id: \.offset) { idx, label in
+                ForEach(Array(step.safeExtraCounterLabels.enumerated()), id: \.offset) { idx, label in
                     ExtraCounterRow(
                         label: label,
-                        value: idx < step.extraCounterValues.count ? step.extraCounterValues[idx] : 0,
+                        value: idx < step.safeExtraCounterValues.count ? step.safeExtraCounterValues[idx] : 0,
                         onMinus: { changeExtra(at: idx, by: -1) },
                         onPlus: { changeExtra(at: idx, by: 1) },
                         onReset: { setExtra(at: idx, to: 0) },
@@ -1493,8 +1493,8 @@ struct EditGuideStepSheet: View {
                 if let r = step.rowsPerRepeat { rowsPerRepeatString = "\(r)" }
                 if let t = step.totalRepeats { totalRepeatsString = "\(t)" }
                 if let target = step.targetStepCount { targetCountString = "\(target)" }
-                subStepsText = step.subSteps.joined(separator: "\n")
-                variationsText = step.repeatVariations.joined(separator: "\n")
+                subStepsText = step.safeSubSteps.joined(separator: "\n")
+                variationsText = step.safeRepeatVariations.joined(separator: "\n")
                 if let before = step.stitchCountBefore { stitchBeforeString = "\(before)" }
                 if let sts = step.stitchCountAfter { stitchCountString = "\(sts)" }
                 if let measure = step.targetMeasureCm { targetMeasureString = "\(measure)" }

@@ -46,6 +46,38 @@ final class WatchModelsTests: XCTestCase {
         XCTAssertEqual(decoded.displaySubtitle, "Piccola · PetiteKnit")
     }
     
+    func testWatchStitchesDescriptionExcludesZeroToStitches() throws {
+        let summary = WatchProjectSummary(
+            id: UUID().uuidString,
+            title: "Test Cast On",
+            designer: "PetiteKnit",
+            selectedSize: "M",
+            totalSecondsWorked: 0,
+            isTimerRunning: false,
+            activeStepId: nil,
+            currentSectionTitle: "Avvio",
+            currentStepTitle: "Avvio Maglie",
+            currentStepIndex: 0,
+            totalStepsCount: 1,
+            isStepCompleted: false,
+            counterLabel: "Maglie Avviate",
+            currentCount: 114,
+            targetCount: 114,
+            currentStitches: 114,
+            stitchesBefore: 0,
+            stitchesAfter: 114,
+            canGoPrevious: false,
+            canGoNext: false,
+            totalStitchesWorked: 114,
+            totalRowsWorked: 0,
+            extraCounterLabels: [],
+            extraCounterValues: []
+        )
+        
+        // Non deve mostrare "0 → 114 m (+114)", ma semplicemente "114 maglie"
+        XCTAssertEqual(summary.stitchesDescription, "114 maglie")
+    }
+    
     func testWatchSyncStateCodable() throws {
         let summary = WatchProjectSummary(
             id: UUID().uuidString,

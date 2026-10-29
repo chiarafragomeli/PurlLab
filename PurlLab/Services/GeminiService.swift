@@ -27,6 +27,7 @@ struct GaugeStepSnapshot: Codable, Sendable {
     let targetMeasureCm: Double?
     let hasCounter: Bool
     let counterLabel: String?
+    var counterKind: String? = nil
     let targetStepCount: Int?
     let sourcePage: Int?
     let sourceQuote: String?
@@ -71,6 +72,7 @@ struct GeneratedStep: Codable {
     let targetMeasureCm: Double?
     let hasCounter: Bool?
     let counterLabel: String?
+    var counterKind: String? = nil
     let targetStepCount: Int?
     let sourcePage: Int?
     let sourceQuote: String?
@@ -79,6 +81,7 @@ struct GeneratedStep: Codable {
 enum GeminiError: LocalizedError {
     case missingApiKey
     case invalidApiKeyFormat
+    case invalidApiKey(String)
     case invalidURL
     case networkError(String)
     case parsingError(String)
@@ -90,6 +93,8 @@ enum GeminiError: LocalizedError {
             return "Chiave API di Gemini non trovata. Inseriscila nelle Impostazioni."
         case .invalidApiKeyFormat:
             return "La chiave API inserita sembra troppo corta o non valida. Inserisci una chiave valida da Google AI Studio."
+        case .invalidApiKey(let msg):
+            return "Autorizzazione Gemini non valida: \(msg)"
         case .invalidURL:
             return "URL dell'endpoint non valido."
         case .networkError(let msg):
@@ -104,6 +109,11 @@ enum GeminiError: LocalizedError {
 
 final class GeminiService: @unchecked Sendable {
     static let shared = GeminiService()
+    
+    // MARK: - Modelli Gemini Centralizzati
+    static let primaryModel = "gemini-3-flash-preview"
+    static let fallbackModel = "gemini-2.5-flash"
+    static let candidateModels = [primaryModel, fallbackModel]
     private init() {}
     
     /// Rimuove eventuali traduzioni inglesi tra parentesi dai nomi delle sezioni (es. "Corpo (Body)" -> "Corpo").
@@ -121,7 +131,7 @@ final class GeminiService: @unchecked Sendable {
         
         // URL pulito: la chiave API è inviata cifrata solo nell'header TLS (x-goog-api-key)
         // per evitare che appaia in chiaro nei log proxy o cronologia URL
-        let urlString = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
+        let urlString = "https://generativelanguage.googleapis.com/v1beta/models/\(Self.fallbackModel):generateContent"
         guard let url = URL(string: urlString) else { throw GeminiError.invalidURL }
         
         var request = URLRequest(url: url)
@@ -300,7 +310,7 @@ final class GeminiService: @unchecked Sendable {
         ]
         
         let bodyData = try JSONSerialization.data(withJSONObject: requestBody)
-        let candidateModels = ["gemini-3-flash-preview", "gemini-2.5-flash"]
+        let candidateModels = Self.candidateModels
         var lastError: Error?
         
         for model in candidateModels {
@@ -347,12 +357,20 @@ final class GeminiService: @unchecked Sendable {
                     }
                     
                     return try JSONDecoder().decode(GeneratedGuideResponse.self, from: jsonData)
+                } else if httpResponse.statusCode == 401 || httpResponse.statusCode == 403 {
+                    let errorText = String(data: data, encoding: .utf8) ?? "Status code: \(httpResponse.statusCode)"
+                    throw GeminiError.invalidApiKey("Chiave API o autorizzazione non valida (HTTP \(httpResponse.statusCode)): \(errorText)")
+                } else if httpResponse.statusCode == 400 {
+                    let errorText = String(data: data, encoding: .utf8) ?? "Status code: 400"
+                    throw GeminiError.networkError("Richiesta non valida (HTTP 400): \(errorText)")
                 } else {
                     let errorText = String(data: data, encoding: .utf8) ?? "Status code: \(httpResponse.statusCode)"
                     lastError = GeminiError.networkError("HTTP \(httpResponse.statusCode): \(errorText)")
-                    // Prova il modello successivo se 503 o 429
+                    // Prova il modello successivo solo per errori transitori (es. 503 o 429)
                     continue
                 }
+            } catch let geminiErr as GeminiError {
+                throw geminiErr
             } catch {
                 lastError = error
                 continue
@@ -482,7 +500,7 @@ final class GeminiService: @unchecked Sendable {
         ]
         
         let bodyData = try JSONSerialization.data(withJSONObject: requestBody)
-        let candidateModels = ["gemini-3-flash-preview", "gemini-2.5-flash"]
+        let candidateModels = Self.candidateModels
         var lastError: Error?
         
         for model in candidateModels {
@@ -536,11 +554,19 @@ final class GeminiService: @unchecked Sendable {
                         userStitches: userStitches,
                         userRows: userRows
                     )
+                } else if httpResponse.statusCode == 401 || httpResponse.statusCode == 403 {
+                    let errorText = String(data: data, encoding: .utf8) ?? "Status code: \(httpResponse.statusCode)"
+                    throw GeminiError.invalidApiKey("Chiave API o autorizzazione non valida (HTTP \(httpResponse.statusCode)): \(errorText)")
+                } else if httpResponse.statusCode == 400 {
+                    let errorText = String(data: data, encoding: .utf8) ?? "Status code: 400"
+                    throw GeminiError.networkError("Richiesta non valida (HTTP 400): \(errorText)")
                 } else {
                     let errorText = String(data: data, encoding: .utf8) ?? "Status code: \(httpResponse.statusCode)"
                     lastError = GeminiError.networkError("HTTP \(httpResponse.statusCode): \(errorText)")
                     continue
                 }
+            } catch let geminiErr as GeminiError {
+                throw geminiErr
             } catch {
                 lastError = error
                 continue
@@ -730,6 +756,7 @@ final class GeminiService: @unchecked Sendable {
                 targetMeasureCm: snap.targetMeasureCm,
                 hasCounter: snap.hasCounter,
                 counterLabel: counterLabel,
+                counterKind: snap.counterKind,
                 targetStepCount: newTarget,
                 sourcePage: snap.sourcePage,
                 sourceQuote: snap.sourceQuote
@@ -807,8 +834,8 @@ final class GeminiService: @unchecked Sendable {
                 var newTargetStepCount = step.targetStepCount
                 var newInstruction = step.instructionText
                 var newTitle = step.title
-                var newSubSteps = step.subSteps
-                var newVariations = step.repeatVariations
+                var newSubSteps = step.safeSubSteps
+                var newVariations = step.safeRepeatVariations
                 var newCounterLabel = step.counterLabel
                 
                 // Ricalcola maglie con continuità verificata
@@ -914,6 +941,7 @@ final class GeminiService: @unchecked Sendable {
                     targetMeasureCm: step.targetMeasureCm,
                     hasCounter: step.hasCounter,
                     counterLabel: newCounterLabel,
+                    counterKind: step.counterKind,
                     targetStepCount: newTargetStepCount,
                     sourcePage: step.sourcePage,
                     sourceQuote: step.sourceQuote

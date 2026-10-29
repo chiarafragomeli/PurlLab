@@ -72,8 +72,10 @@ struct GuideCompletionView: View {
     private var extraCountersSummary: [(String, Int)] {
         var result: [(String, Int)] = []
         for step in sortedSteps {
-            for (i, label) in step.extraCounterLabels.enumerated() {
-                let v = i < step.extraCounterValues.count ? step.extraCounterValues[i] : 0
+            let labels = step.safeExtraCounterLabels
+            let values = step.safeExtraCounterValues
+            for (i, label) in labels.enumerated() {
+                let v = i < values.count ? values[i] : 0
                 result.append((label, v))
             }
         }

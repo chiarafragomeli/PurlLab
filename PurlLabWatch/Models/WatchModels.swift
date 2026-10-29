@@ -51,13 +51,13 @@ struct WatchProjectSummary: Codable, Identifiable, Sendable {
         return size.isEmpty ? designer : (designer.isEmpty ? size : "\(size) · \(designer)")
     }
     
-    /// Testo sintetico sulle maglie (es. "114 maglie" o "4 → 8 maglie")
+    /// Testo sintetico sulle maglie (es. "114 maglie" o "4 → 8 maglie", evitando la pill "0 → X")
     var stitchesDescription: String? {
-        if let before = stitchesBefore, let after = stitchesAfter, before != after {
+        if let before = stitchesBefore, let after = stitchesAfter, before > 0, before != after {
             let diff = after - before
             let diffStr = diff > 0 ? "+\(diff)" : "\(diff)"
             return "\(before) → \(after) m (\(diffStr))"
-        } else if let sts = currentStitches, sts > 0 {
+        } else if let sts = currentStitches ?? stitchesAfter, sts > 0 {
             return "\(sts) maglie"
         }
         return nil

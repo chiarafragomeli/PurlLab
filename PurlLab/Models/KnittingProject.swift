@@ -48,10 +48,12 @@ final class KnittingProject {
 
 // MARK: - Statistiche e Schede di Lavoro
 extension KnittingProject {
-    /// Calcola il numero totale di ferri lavorati attraverso tutte le schede della guida (o del contatore globale)
+    /// Calcola il numero totale di ferri lavorati attraverso tutte le schede della guida (o del contatore globale),
+    /// escludendo esplicitamente i contatori di maglie (ALTO-08)
     var totalGuideRowsWorked: Int {
-        if !guideSteps.isEmpty {
-            return guideSteps.reduce(0) { $0 + $1.currentStepCount }
+        let rowSteps = guideSteps.filter { !$0.isStitchCounter }
+        if !rowSteps.isEmpty {
+            return rowSteps.reduce(0) { $0 + $1.currentStepCount }
         }
         return counters.first(where: { $0.title.localizedCaseInsensitiveContains("globale") })?.currentCount ?? counters.first?.currentCount ?? 0
     }
@@ -129,9 +131,9 @@ extension KnittingProject {
         return hasValidTargets && total > 0 ? total : nil
     }
     
-    /// Totale dei ferri obiettivo in tutto il pattern
+    /// Totale dei ferri obiettivo in tutto il pattern, escludendo i contatori di maglie (ALTO-08)
     var targetTotalRows: Int? {
-        let total = guideSteps.compactMap { $0.effectiveTargetCount }.reduce(0, +)
+        let total = guideSteps.filter { !$0.isStitchCounter }.compactMap { $0.effectiveTargetCount }.reduce(0, +)
         return total > 0 ? total : nil
     }
     
