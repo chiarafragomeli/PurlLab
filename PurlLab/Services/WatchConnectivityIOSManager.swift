@@ -94,9 +94,11 @@ final class WatchConnectivityIOSManager: NSObject, WCSessionDelegate {
     }
     
     // MARK: - Inizializzazione & Selezione Attiva
-    func configure(with modelContext: ModelContext) {
+    func configure(with modelContext: ModelContext?) {
         self.modelContext = modelContext
-        syncAllProjectsToWatch()
+        if modelContext != nil {
+            syncAllProjectsToWatch()
+        }
     }
     
     func setActiveProject(_ project: KnittingProject?) {
@@ -417,10 +419,7 @@ final class WatchConnectivityIOSManager: NSObject, WCSessionDelegate {
             
         case .pauseTimer:
             if TimerManager.shared.isRunning && TimerManager.shared.activeProjectId == project.id {
-                let duration = TimerManager.shared.pause()
-                project.totalSecondsWorked += duration
-                project.updatedAt = Date()
-                try? context.save()
+                _ = TimerManager.shared.pause()
             }
             
         case .selectProject, .requestFullSync:

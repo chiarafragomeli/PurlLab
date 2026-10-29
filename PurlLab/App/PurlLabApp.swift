@@ -25,16 +25,11 @@ struct PurlLabApp: App {
         WindowGroup {
             ProjectListView()
                 .onAppear {
-                    WatchConnectivityIOSManager.shared.configure(with: sharedModelContainer.mainContext)
+                    let context = sharedModelContainer.mainContext
+                    WatchConnectivityIOSManager.shared.configure(with: context)
+                    TimerManager.shared.configure(with: context)
                 }
         }
         .modelContainer(sharedModelContainer)
-        .onChange(of: scenePhase) { _, newPhase in
-            if newPhase == .background {
-                TimerManager.shared.handleAppDidEnterBackground()
-            } else if newPhase == .active {
-                TimerManager.shared.handleAppWillEnterForeground()
-            }
-        }
     }
 }

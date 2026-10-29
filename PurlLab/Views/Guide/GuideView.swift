@@ -321,8 +321,7 @@ struct GuideView: View {
     private func finishGuide() {
         // Salva la sessione di lavoro in corso nel tempo totale del progetto
         if TimerManager.shared.isRunning && TimerManager.shared.activeProjectId == project.id {
-            let duration = TimerManager.shared.pause()
-            project.totalSecondsWorked += duration
+            _ = TimerManager.shared.pause()
         }
         project.completedAt = Date()
         project.updatedAt = Date()

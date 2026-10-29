@@ -27,8 +27,7 @@ struct UnifiedProjectBottomBar: View {
             Button {
                 haptic.impactOccurred()
                 if isProjectTimerActive {
-                    let duration = timerManager.pause()
-                    project.totalSecondsWorked += duration
+                    timerManager.pause()
                 } else {
                     timerManager.start(for: project.id)
                 }
@@ -350,24 +349,7 @@ struct ProjectDetailView: View {
             // Salva la sessione attiva se si esce dal progetto
             guard !project.isDeleted, project.modelContext != nil else { return }
             if TimerManager.shared.isRunning && TimerManager.shared.activeProjectId == project.id {
-                let duration = TimerManager.shared.pause()
-                project.totalSecondsWorked += duration
-                try? modelContext.save()
-            }
-        }
-        .onChange(of: scenePhase) { _, newPhase in
-            guard !project.isDeleted, project.modelContext != nil else { return }
-            // Se l'app va in background o lo schermo viene bloccato, memorizza subito
-            // i secondi lavorati per prevenire perdite dati in caso di sospensione o chiusura da iOS
-            if newPhase == .background || newPhase == .inactive {
-                if TimerManager.shared.isRunning && TimerManager.shared.activeProjectId == project.id {
-                    let chunk = TimerManager.shared.flushElapsedToTotal()
-                    if chunk > 0 {
-                        project.totalSecondsWorked += chunk
-                        project.updatedAt = Date()
-                        try? modelContext.save()
-                    }
-                }
+                _ = TimerManager.shared.pause()
             }
         }
             }

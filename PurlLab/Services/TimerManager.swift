@@ -1,6 +1,6 @@
 import Foundation
-import SwiftUI
-import Combine
+import UIKit
+import SwiftData
 
 @MainActor
 @Observable
@@ -12,9 +12,11 @@ final class TimerManager {
     var elapsedSecondsInCurrentSession: TimeInterval = 0
     
     private var timer: Timer?
-    private var sessionStartDate: Date?
-    private var lastInteractionDate: Date = Date()
+    var sessionStartDate: Date?
+    var lastInteractionDate: Date = Date()
     private var backgroundEntryDate: Date?
+    private nonisolated(unsafe) var observerTokens: [NSObjectProtocol] = []
+    private var modelContext: ModelContext?
     
     var autoPauseMinutes: Double = 15.0
     
@@ -23,12 +25,24 @@ final class TimerManager {
     }
     
     deinit {
-        NotificationCenter.default.removeObserver(self)
+        for token in observerTokens {
+            NotificationCenter.default.removeObserver(token)
+        }
+        observerTokens.removeAll()
     }
     
-    // MARK: - Gestione Ciclo di Vita per Ottimizzazione Batteria
+    func configure(with modelContext: ModelContext?) {
+        self.modelContext = modelContext
+    }
+    
+    // MARK: - Gestione Ciclo di Vita Centralizzata
     private func setupLifecycleObservers() {
-        NotificationCenter.default.addObserver(
+        for token in observerTokens {
+            NotificationCenter.default.removeObserver(token)
+        }
+        observerTokens.removeAll()
+        
+        let bgToken = NotificationCenter.default.addObserver(
             forName: UIApplication.didEnterBackgroundNotification,
             object: nil,
             queue: .main
@@ -37,8 +51,9 @@ final class TimerManager {
                 self?.handleAppDidEnterBackground()
             }
         }
+        observerTokens.append(bgToken)
         
-        NotificationCenter.default.addObserver(
+        let fgToken = NotificationCenter.default.addObserver(
             forName: UIApplication.willEnterForegroundNotification,
             object: nil,
             queue: .main
@@ -47,15 +62,17 @@ final class TimerManager {
                 self?.handleAppWillEnterForeground()
             }
         }
+        observerTokens.append(fgToken)
     }
     
     /// Quando l'app va in background o lo schermo si spegne:
     /// Invalida il timer hardware per azzerare il risveglio periodico della CPU (consumo batteria 0%),
-    /// memorizzando il timestamp di uscita.
+    /// persiste in sicurezza il chunk lavorato finora per prevenire perdite se iOS chiude l'app in background.
     func handleAppDidEnterBackground() {
         guard isRunning else { return }
         backgroundEntryDate = Date()
         stopTicker()
+        _ = flushElapsedToTotal()
     }
     
     /// Quando l'app torna in primo piano:
@@ -69,7 +86,6 @@ final class TimerManager {
         
         if timeSinceLastInteraction > maxAllowedInactiveSeconds {
             // L'utente è stato assente troppo a lungo: applica l'auto-pausa
-            // calcolando il tempo fino al timeout di inattività
             let effectiveDuration = max(0, min(now.timeIntervalSince(start), lastInteractionDate.addingTimeInterval(maxAllowedInactiveSeconds).timeIntervalSince(start)))
             elapsedSecondsInCurrentSession = effectiveDuration
             _ = pause()
@@ -79,6 +95,22 @@ final class TimerManager {
             startTicker()
         }
         backgroundEntryDate = nil
+    }
+    
+    // MARK: - Persistenza Sessione
+    private func persistSession(projectId: UUID, start: Date, end: Date, duration: TimeInterval) {
+        guard duration > 0, let modelContext else { return }
+        let descriptor = FetchDescriptor<KnittingProject>(
+            predicate: #Predicate { $0.id == projectId }
+        )
+        guard let project = try? modelContext.fetch(descriptor).first else { return }
+        
+        let session = TimerSession(startDate: start, endDate: end, durationSeconds: duration)
+        session.project = project
+        project.timerSessions.append(session)
+        project.totalSecondsWorked += duration
+        project.updatedAt = Date()
+        try? modelContext.save()
     }
     
     // MARK: - Controlli Sessione
@@ -96,27 +128,55 @@ final class TimerManager {
         WatchConnectivityIOSManager.shared.syncAllProjectsToWatch()
     }
     
+    @discardableResult
     func pause() -> TimeInterval {
+        stopTicker()
         guard isRunning else { return 0 }
         isRunning = false
-        stopTicker()
         
-        let sessionDuration = elapsedSecondsInCurrentSession
+        let now = Date()
+        let start = sessionStartDate ?? now
+        
+        // Ricalcola matematicamente l'elapsed da sessionStartDate invece di usare il valore congelato
+        let rawElapsed = max(0, now.timeIntervalSince(start))
+        let maxAllowed = autoPauseMinutes * 60.0
+        let timeSinceInteraction = now.timeIntervalSince(lastInteractionDate)
+        
+        let duration: TimeInterval
+        if timeSinceInteraction > maxAllowed {
+            let effectiveEnd = lastInteractionDate.addingTimeInterval(maxAllowed)
+            duration = max(0, min(rawElapsed, effectiveEnd.timeIntervalSince(start)))
+        } else {
+            duration = rawElapsed
+        }
+        
+        if let projectId = activeProjectId, duration > 0 {
+            persistSession(projectId: projectId, start: start, end: now, duration: duration)
+        }
+        
         elapsedSecondsInCurrentSession = 0
         sessionStartDate = nil
+        activeProjectId = nil
         backgroundEntryDate = nil
+        
         WatchConnectivityIOSManager.shared.syncAllProjectsToWatch()
-        return sessionDuration
+        return duration
     }
     
     /// Scarica i secondi lavorati finora per consentire il salvataggio immediato in SwiftData
     /// reimpostando la data di riferimento per i secondi successivi, senza interrompere la sessione attiva.
+    @discardableResult
     func flushElapsedToTotal() -> TimeInterval {
-        guard isRunning, let _ = sessionStartDate else { return 0 }
-        let currentElapsed = elapsedSecondsInCurrentSession
+        guard isRunning, let start = sessionStartDate, let projectId = activeProjectId else { return 0 }
+        let now = Date()
+        let duration = max(0, now.timeIntervalSince(start))
+        guard duration > 0 else { return 0 }
+        
+        persistSession(projectId: projectId, start: start, end: now, duration: duration)
+        
+        sessionStartDate = now
         elapsedSecondsInCurrentSession = 0
-        sessionStartDate = Date()
-        return currentElapsed
+        return duration
     }
     
     func registerInteraction() {
