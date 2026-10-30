@@ -429,7 +429,6 @@
 				T00100000000000000000004 /* WatchModelsTests.swift in Sources */,
 				T00100000000000000000005 /* TimerManagerTests.swift in Sources */,
 				T00100000000000000000006 /* GaugeRecalculationTests.swift in Sources */,
-				T00100000000000000000007 /* WatchConnectivityManager.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -458,6 +457,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				T00100000000000000000007 /* WatchConnectivityManager.swift in Sources */,
 				B01000000000000000000001 /* WatchConnectivityIOSManager.swift in Sources */,
 				B02000000000000000000002 /* WatchModels.swift in Sources */,
 				81FA378129F01B2E00112233 /* GaugeRecalculationView.swift in Sources */,

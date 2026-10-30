@@ -12,9 +12,6 @@ private enum WKHapticType {
 private func playHaptic(_ type: WKHapticType) {}
 #endif
 import SwiftUI
-#if !os(watchOS)
-@testable import PurlLab
-#endif
 
 // MARK: - Watch Transport Protocol (per testing e disaccoppiamento)
 protocol WatchTransport: AnyObject, Sendable {
