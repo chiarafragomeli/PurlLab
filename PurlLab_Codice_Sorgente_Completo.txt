@@ -1,6 +1,6 @@
 ================================================================================
  PURLLAB - CODICE SORGENTE COMPLETO (iOS & watchOS)
- Data esportazione: 2026-10-30 12:29:08
+ Data esportazione: 2026-10-30 12:45:55
  Totale file inclusi: 30
 ================================================================================
 
@@ -2853,8 +2853,11 @@ final class WatchConnectivityIOSManager: NSObject, WCSessionDelegate {
     public private(set) var activeProjectId: UUID?
     private var activeStepIdsByProject: [UUID: UUID] = [:]
     
-    // Deduplicazione comandi Watch tramite cache LRU (CRIT-02)
+    // Deduplicazione comandi Watch tramite cache persistente in UserDefaults (CRIT-02)
+    private let userDefaults: UserDefaults
+    private let userDefaultsKey = "purl_lab_processed_command_ids"
     private var processedCommandIds: [String] = []
+    private var processedCommandIdsSet: Set<String> = []
     private let maxProcessedCommands = 200
     
     // Mappa stepId -> ultimo timestamp per ordinamento temporale comandi contatore (Patch 2a)
@@ -2864,15 +2867,29 @@ final class WatchConnectivityIOSManager: NSObject, WCSessionDelegate {
     private var appContextDebounceTask: Task<Void, Never>?
     private var pendingSyncDataForAppContext: Data?
     
+    func hasProcessedCommand(_ commandId: String?) -> Bool {
+        guard let commandId = commandId, !commandId.isEmpty else { return false }
+        return processedCommandIdsSet.contains(commandId)
+    }
+    
     func isDuplicateCommand(_ commandId: String?) -> Bool {
         guard let commandId = commandId, !commandId.isEmpty else { return false }
-        if processedCommandIds.contains(commandId) {
+        if processedCommandIdsSet.contains(commandId) {
             return true
         }
         processedCommandIds.append(commandId)
+        processedCommandIdsSet.insert(commandId)
         if processedCommandIds.count > maxProcessedCommands {
-            processedCommandIds.removeFirst(processedCommandIds.count - maxProcessedCommands)
+            let overflow = processedCommandIds.count - maxProcessedCommands
+            let removed = Array(processedCommandIds.prefix(overflow))
+            processedCommandIds.removeFirst(overflow)
+            for id in removed {
+                if !processedCommandIds.contains(id) {
+                    processedCommandIdsSet.remove(id)
+                }
+            }
         }
+        userDefaults.set(processedCommandIds, forKey: userDefaultsKey)
         return false
     }
     
@@ -2924,9 +2941,16 @@ final class WatchConnectivityIOSManager: NSObject, WCSessionDelegate {
         }
     }
     
-    override private init() {
+    init(userDefaults: UserDefaults = .standard, setupSession: Bool = true) {
+        self.userDefaults = userDefaults
+        let saved = userDefaults.stringArray(forKey: userDefaultsKey) ?? []
+        let trimmed = Array(saved.suffix(maxProcessedCommands))
+        self.processedCommandIds = trimmed
+        self.processedCommandIdsSet = Set(trimmed)
         super.init()
-        setupWCSession()
+        if setupSession {
+            setupWCSession()
+        }
     }
     
     // MARK: - Inizializzazione & Selezione Attiva
@@ -3066,6 +3090,7 @@ final class WatchConnectivityIOSManager: NSObject, WCSessionDelegate {
         projectId: String?,
         stepId: String?,
         newCount: Int?,
+        oldCount: Int? = nil,
         index: Int?,
         commandId: String? = nil,
         timestamp: TimeInterval? = nil
@@ -3153,7 +3178,8 @@ final class WatchConnectivityIOSManager: NSObject, WCSessionDelegate {
         
         let effectiveStepKey = stepId ?? currentStep?.id.uuidString ?? "project_\(project.id.uuidString)"
         if isCounterCommand, let cmdTimestamp = timestamp {
-            if isStaleCounterCommand(stepKey: effectiveStepKey, timestamp: cmdTimestamp) {
+            // Se oldCount è nil (vecchio formato comandi assoluti), verifica se è obsoleto
+            if oldCount == nil, isStaleCounterCommand(stepKey: effectiveStepKey, timestamp: cmdTimestamp) {
                 if let syncData = currentSyncData(for: allProjects) {
                     return ["syncData": syncData]
                 } else {
@@ -3168,7 +3194,14 @@ final class WatchConnectivityIOSManager: NSObject, WCSessionDelegate {
         switch command {
         case .incrementMainCounter:
             if let count = newCount {
-                let safeCount = min(max(0, count), 100_000)
+                let safeCount: Int
+                if let old = oldCount {
+                    let delta = count - old
+                    let currentVal = currentStep?.currentStepCount ?? (project.counters.first?.currentCount ?? 0)
+                    safeCount = min(max(0, currentVal + delta), 100_000)
+                } else {
+                    safeCount = min(max(0, count), 100_000)
+                }
                 if let step = currentStep {
                     step.currentStepCount = safeCount
                 } else if let globalCounter = project.counters.first {
@@ -3194,7 +3227,14 @@ final class WatchConnectivityIOSManager: NSObject, WCSessionDelegate {
             
         case .decrementMainCounter:
             if let count = newCount {
-                let safeCount = min(max(0, count), 100_000)
+                let safeCount: Int
+                if let old = oldCount {
+                    let delta = count - old
+                    let currentVal = currentStep?.currentStepCount ?? (project.counters.first?.currentCount ?? 0)
+                    safeCount = min(max(0, currentVal + delta), 100_000)
+                } else {
+                    safeCount = min(max(0, count), 100_000)
+                }
                 if let step = currentStep {
                     step.currentStepCount = safeCount
                 } else if let globalCounter = project.counters.first {
@@ -3219,7 +3259,14 @@ final class WatchConnectivityIOSManager: NSObject, WCSessionDelegate {
             
         case .setMainCounter:
             if let count = newCount {
-                let safeCount = min(max(0, count), 100_000)
+                let safeCount: Int
+                if let old = oldCount {
+                    let delta = count - old
+                    let currentVal = currentStep?.currentStepCount ?? (project.counters.first?.currentCount ?? 0)
+                    safeCount = min(max(0, currentVal + delta), 100_000)
+                } else {
+                    safeCount = min(max(0, count), 100_000)
+                }
                 if let step = currentStep {
                     step.currentStepCount = safeCount
                 } else if let globalCounter = project.counters.first {
@@ -3378,12 +3425,13 @@ final class WatchConnectivityIOSManager: NSObject, WCSessionDelegate {
         let projectId = message["projectId"] as? String
         let stepId = message["stepId"] as? String
         let newCount = message["newCount"] as? Int
+        let oldCount = message["oldCount"] as? Int
         let index = message["index"] as? Int
         let timestamp = message["timestamp"] as? TimeInterval
         nonisolated(unsafe) let safeReplyHandler = replyHandler
         
         Task { @MainActor in
-            let reply = self.handleIncomingCommand(commandRaw: commandRaw, projectId: projectId, stepId: stepId, newCount: newCount, index: index, commandId: commandId, timestamp: timestamp)
+            let reply = self.handleIncomingCommand(commandRaw: commandRaw, projectId: projectId, stepId: stepId, newCount: newCount, oldCount: oldCount, index: index, commandId: commandId, timestamp: timestamp)
             safeReplyHandler(reply)
         }
     }
@@ -3394,11 +3442,12 @@ final class WatchConnectivityIOSManager: NSObject, WCSessionDelegate {
         let projectId = userInfo["projectId"] as? String
         let stepId = userInfo["stepId"] as? String
         let newCount = userInfo["newCount"] as? Int
+        let oldCount = userInfo["oldCount"] as? Int
         let index = userInfo["index"] as? Int
         let timestamp = userInfo["timestamp"] as? TimeInterval
         
         Task { @MainActor in
-            _ = self.handleIncomingCommand(commandRaw: commandRaw, projectId: projectId, stepId: stepId, newCount: newCount, index: index, commandId: commandId, timestamp: timestamp)
+            _ = self.handleIncomingCommand(commandRaw: commandRaw, projectId: projectId, stepId: stepId, newCount: newCount, oldCount: oldCount, index: index, commandId: commandId, timestamp: timestamp)
         }
     }
 }
@@ -10148,6 +10197,7 @@ final class TimerManagerTests: XCTestCase {
 [25/30] FILE: PurlLabTests/WatchModelsTests.swift
 ================================================================================
 import XCTest
+import SwiftData
 @testable import PurlLab
 
 final class WatchModelsTests: XCTestCase {
@@ -10312,6 +10362,58 @@ final class WatchModelsTests: XCTestCase {
     }
     
     @MainActor
+    func testPersistentCommandDeduplicationAcrossManagerRecreation() {
+        let suiteName = "test_dedup_\(UUID().uuidString)"
+        let testDefaults = UserDefaults(suiteName: suiteName)!
+        defer {
+            testDefaults.removePersistentDomain(forName: suiteName)
+        }
+        
+        let manager1 = WatchConnectivityIOSManager(userDefaults: testDefaults, setupSession: false)
+        let commandId = UUID().uuidString
+        
+        // Primo arrivo con il primo manager: non deve essere duplicato
+        XCTAssertFalse(manager1.isDuplicateCommand(commandId))
+        // Stesso manager, stesso commandId: duplicato
+        XCTAssertTrue(manager1.isDuplicateCommand(commandId))
+        
+        // Simula riavvio dell'app ricreando un nuovo manager con le stesse UserDefaults
+        let manager2 = WatchConnectivityIOSManager(userDefaults: testDefaults, setupSession: false)
+        // Il comando elaborato prima del riavvio deve risultare duplicato
+        XCTAssertTrue(manager2.isDuplicateCommand(commandId))
+        
+        // Un nuovo comando mai visto prima non deve essere duplicato
+        let newCommandId = UUID().uuidString
+        XCTAssertFalse(manager2.isDuplicateCommand(newCommandId))
+    }
+    
+    @MainActor
+    func testPersistentCommandDeduplicationLimitsTo200Commands() {
+        let suiteName = "test_dedup_limit_\(UUID().uuidString)"
+        let testDefaults = UserDefaults(suiteName: suiteName)!
+        defer {
+            testDefaults.removePersistentDomain(forName: suiteName)
+        }
+        
+        let manager = WatchConnectivityIOSManager(userDefaults: testDefaults, setupSession: false)
+        var ids: [String] = []
+        for i in 0..<205 {
+            let id = "cmd_\(i)"
+            ids.append(id)
+            _ = manager.isDuplicateCommand(id)
+        }
+        
+        // Ricrea il manager per verificare cosa è stato salvato
+        let managerRecreated = WatchConnectivityIOSManager(userDefaults: testDefaults, setupSession: false)
+        // Gli ultimi 200 comandi (cmd_5 .. cmd_204) sono ancora presenti
+        XCTAssertTrue(managerRecreated.isDuplicateCommand(ids[5]))
+        XCTAssertTrue(managerRecreated.isDuplicateCommand(ids[204]))
+        // I primi 5 comandi (cmd_0 .. cmd_4) sono stati scartati dalla finestra scorrevole di 200
+        XCTAssertFalse(managerRecreated.hasProcessedCommand(ids[0]))
+        XCTAssertFalse(managerRecreated.hasProcessedCommand(ids[4]))
+    }
+    
+    @MainActor
     func testWatchCounterCommandTimestampOrdering() {
         let manager = WatchConnectivityIOSManager.shared
         let stepKey = "test_step_\(UUID().uuidString)"
@@ -10457,6 +10559,92 @@ final class WatchModelsTests: XCTestCase {
         // Ripristina timeout di default a 8s e cancella comandi pendenti
         coordinator.resetForTesting()
     }
+    
+    @MainActor
+    func testLostUpdateCounterDeltaHandling() {
+        let testClock = TestClock()
+        let fakeTransport = FakeWatchTransport()
+        let coordinator = WatchCommandCoordinator(transport: fakeTransport, clock: testClock)
+        
+        let schema = Schema([KnittingProject.self, GuideStep.self, RowCounter.self, TimerSession.self])
+        let config = ModelConfiguration(isStoredInMemoryOnly: true)
+        let container = try! ModelContainer(for: schema, configurations: [config])
+        let context = container.mainContext
+        
+        let project = KnittingProject(title: "Delta Test")
+        let step = GuideStep(sectionTitle: "Sezione", instructionText: "Lavora", orderIndex: 0, hasCounter: true, currentStepCount: 6, targetStepCount: 50)
+        project.guideSteps.append(step)
+        context.insert(project)
+        try! context.save()
+        
+        let manager = WatchConnectivityIOSManager.shared
+        manager.configure(with: context)
+        manager.setActiveProject(project)
+        manager.setActiveStep(step, for: project)
+        
+        // (a) Watch genera comando incremento quando vedeva 6 (oldCount: 6, newCount: 7)
+        // Viene accodato tramite fallback (es. trasporto offline o timeout)
+        fakeTransport.isReachable = false
+        coordinator.sendCommand(
+            .incrementMainCounter,
+            projectId: project.id.uuidString,
+            data: ["newCount": 7, "oldCount": 6, "stepId": step.id.uuidString]
+        )
+        
+        XCTAssertEqual(fakeTransport.transferredUserInfos.count, 1)
+        let queuedMessage = fakeTransport.transferredUserInfos[0]
+        let cmdId = queuedMessage["commandId"] as! String
+        
+        // Nel frattempo l'iPhone passa da 6 a 20
+        step.currentStepCount = 20
+        try! context.save()
+        
+        // Il comando in coda viene consegnato a iPhone
+        _ = manager.handleIncomingCommand(
+            commandRaw: queuedMessage["command"] as? String,
+            projectId: queuedMessage["projectId"] as? String,
+            stepId: queuedMessage["stepId"] as? String,
+            newCount: queuedMessage["newCount"] as? Int,
+            oldCount: queuedMessage["oldCount"] as? Int,
+            index: queuedMessage["index"] as? Int,
+            commandId: cmdId,
+            timestamp: queuedMessage["timestamp"] as? TimeInterval
+        )
+        
+        // Risultato deve essere 21 (20 + (7 - 6)), NON 6 o 7
+        XCTAssertEqual(step.currentStepCount, 21, "Il comando in coda consegnato dopo che l'iPhone è passato da 6 a 20 deve risultare in 21")
+        
+        // (b) Stesso comando consegnato due volte -> applicato una sola volta
+        _ = manager.handleIncomingCommand(
+            commandRaw: queuedMessage["command"] as? String,
+            projectId: queuedMessage["projectId"] as? String,
+            stepId: queuedMessage["stepId"] as? String,
+            newCount: queuedMessage["newCount"] as? Int,
+            oldCount: queuedMessage["oldCount"] as? Int,
+            index: queuedMessage["index"] as? Int,
+            commandId: cmdId,
+            timestamp: queuedMessage["timestamp"] as? TimeInterval
+        )
+        XCTAssertEqual(step.currentStepCount, 21, "Il comando ripetuto con lo stesso commandId deve essere applicato una sola volta")
+        
+        // (c) Corona 3->8 in ritardo con iPhone a 20 -> 25
+        step.currentStepCount = 20
+        try! context.save()
+        
+        let crownCmdId = UUID().uuidString
+        _ = manager.handleIncomingCommand(
+            commandRaw: WatchCommandType.setMainCounter.rawValue,
+            projectId: project.id.uuidString,
+            stepId: step.id.uuidString,
+            newCount: 8,
+            oldCount: 3,
+            index: nil,
+            commandId: crownCmdId,
+            timestamp: testClock.now.timeIntervalSince1970
+        )
+        // 20 + (8 - 3) = 25
+        XCTAssertEqual(step.currentStepCount, 25, "Rotazione corona 3->8 in ritardo con iPhone a 20 deve produrre 25")
+    }
 }
 
 // MARK: - FakeWatchTransport per testing disaccoppiato da WCSession
@@ -10488,6 +10676,165 @@ final class FakeWatchTransport: @unchecked Sendable, WatchTransport {
 [26/30] FILE: PurlLabWatch/Models/WatchModels.swift
 ================================================================================
 import Foundation
+
+// MARK: - Clock Abstraction (iniettabile per test deterministici e immediati)
+public protocol AppClock: Sendable {
+    var now: Date { get }
+    func sleep(nanoseconds: UInt64) async throws
+}
+
+public struct SystemClock: AppClock {
+    public init() {}
+    public var now: Date { Date() }
+    public func sleep(nanoseconds: UInt64) async throws {
+        try await Task.sleep(nanoseconds: nanoseconds)
+    }
+}
+
+// MARK: - Watch Message Payload
+struct WatchMessagePayload: @unchecked Sendable {
+    let message: [String: Any]
+    init(message: [String: Any]) {
+        self.message = message
+    }
+}
+
+// MARK: - Watch Transport Protocol (per testing e disaccoppiamento)
+protocol WatchTransport: AnyObject, Sendable {
+    var isReachable: Bool { get }
+    func sendMessage(_ message: [String: Any], replyHandler: (([String: Any]) -> Void)?, errorHandler: ((Error) -> Void)?)
+    func transferUserInfoFallback(_ userInfo: [String: Any])
+}
+
+// MARK: - Watch Command Coordinator
+/// Coordinatore puro (senza dipendenze da WatchKit o WCSession) della logica di invio comandi,
+/// tracking comandi in volo, deduplicazione, timeout di 8s con fallback e crown debounce.
+@MainActor
+final class WatchCommandCoordinator {
+    private(set) var inFlightCommandsCount: Int = 0
+    var transport: (any WatchTransport)?
+    var clock: any AppClock = SystemClock()
+    var inFlightCommandTimeoutNanoseconds: UInt64 = 8_000_000_000
+    
+    private var inFlightTimeoutTasks: [String: Task<Void, Never>] = [:]
+    private var activeInFlightCommandIds = Set<String>()
+    
+    var onFullSyncNeeded: (@MainActor () -> Void)?
+    var onSyncDataReceived: (@MainActor (Data) -> Void)?
+    
+    init(transport: (any WatchTransport)? = nil, clock: any AppClock = SystemClock()) {
+        self.transport = transport
+        self.clock = clock
+    }
+    
+    func beginCrownDebounce() {
+        inFlightCommandsCount += 1
+    }
+    
+    func endCrownDebounce() {
+        inFlightCommandsCount = max(0, inFlightCommandsCount - 1)
+    }
+    
+    func completeInFlightCommand(commandId: String) {
+        guard activeInFlightCommandIds.remove(commandId) != nil else { return }
+        if let task = inFlightTimeoutTasks.removeValue(forKey: commandId) {
+            task.cancel()
+        }
+        inFlightCommandsCount = max(0, inFlightCommandsCount - 1)
+    }
+    
+    func resetForTesting() {
+        for (_, task) in inFlightTimeoutTasks {
+            task.cancel()
+        }
+        inFlightTimeoutTasks.removeAll()
+        activeInFlightCommandIds.removeAll()
+        inFlightCommandsCount = 0
+        inFlightCommandTimeoutNanoseconds = 8_000_000_000
+        clock = SystemClock()
+    }
+    
+    func sendCommand(
+        _ command: WatchCommandType,
+        projectId: String,
+        data: [String: Any] = [:]
+    ) {
+        guard let transport = self.transport else { return }
+        let commandId = UUID().uuidString
+        
+        var message: [String: Any] = [
+            "commandId": commandId,
+            "command": command.rawValue,
+            "projectId": projectId,
+            "timestamp": clock.now.timeIntervalSince1970
+        ]
+        for (k, v) in data { message[k] = v }
+        
+        inFlightCommandsCount += 1
+        activeInFlightCommandIds.insert(commandId)
+        
+        let payload = WatchMessagePayload(message: message)
+        if transport.isReachable {
+            let timeoutTask = Task { @MainActor [weak self] in
+                try? await (self?.clock ?? SystemClock()).sleep(nanoseconds: self?.inFlightCommandTimeoutNanoseconds ?? 8_000_000_000)
+                guard !Task.isCancelled, let self = self else { return }
+                if self.activeInFlightCommandIds.remove(commandId) != nil {
+                    self.inFlightTimeoutTasks.removeValue(forKey: commandId)
+                    self.inFlightCommandsCount = max(0, self.inFlightCommandsCount - 1)
+                    // Fallback transferUserInfo allo scadere del timeout prima di requestFullSync
+                    transport.transferUserInfoFallback(message)
+                    if command != .requestFullSync {
+                        self.onFullSyncNeeded?()
+                    }
+                }
+            }
+            inFlightTimeoutTasks[commandId] = timeoutTask
+            Self.sendSessionMessageReachable(transport, payload: payload, coordinator: self)
+        } else {
+            activeInFlightCommandIds.remove(commandId)
+            inFlightCommandsCount = max(0, inFlightCommandsCount - 1)
+            transport.transferUserInfoFallback(message)
+        }
+    }
+    
+    private nonisolated static func sendSessionMessageReachable(
+        _ transport: any WatchTransport,
+        payload: WatchMessagePayload,
+        coordinator: WatchCommandCoordinator?
+    ) {
+        transport.sendMessage(payload.message, replyHandler: { reply in
+            let syncData = reply["syncData"] as? Data
+            let error = reply["error"] as? String
+            let cmdId = payload.message["commandId"] as? String
+            Task { @MainActor in
+                guard let coordinator = coordinator else { return }
+                if let cmdId = cmdId {
+                    coordinator.completeInFlightCommand(commandId: cmdId)
+                } else {
+                    coordinator.inFlightCommandsCount = max(0, coordinator.inFlightCommandsCount - 1)
+                }
+                
+                if let _ = error {
+                    // iPhone ha restituito errore (es. notReady): fallback in background per non perdere il comando
+                    transport.transferUserInfoFallback(payload.message)
+                } else if let syncData = syncData {
+                    coordinator.onSyncDataReceived?(syncData)
+                }
+            }
+        }, errorHandler: { _ in
+            let cmdId = payload.message["commandId"] as? String
+            Task { @MainActor in
+                guard let coordinator = coordinator else { return }
+                if let cmdId = cmdId {
+                    coordinator.completeInFlightCommand(commandId: cmdId)
+                } else {
+                    coordinator.inFlightCommandsCount = max(0, coordinator.inFlightCommandsCount - 1)
+                }
+            }
+            transport.transferUserInfoFallback(payload.message)
+        })
+    }
+}
 
 /// Modello sintetico di un progetto da visualizzare e controllare su Apple Watch
 struct WatchProjectSummary: Codable, Identifiable, Sendable {
@@ -10690,6 +11037,7 @@ final class WatchConnectivityManager: NSObject, WCSessionDelegate {
     /// Incrementa il contatore della sezione (+1) con risposta aptica istantanea
     func incrementMainCounter() {
         guard var current = activeProject else { return }
+        let oldCount = current.currentCount
         current.currentCount += 1
         current.totalRowsWorked += 1
         if let sts = current.currentStitches, sts > 0 {
@@ -10704,7 +11052,10 @@ final class WatchConnectivityManager: NSObject, WCSessionDelegate {
             playHaptic(.click)
         }
         
-        var payload: [String: Any] = ["newCount": current.currentCount]
+        var payload: [String: Any] = [
+            "newCount": current.currentCount,
+            "oldCount": oldCount
+        ]
         if let stepId = current.activeStepId {
             payload["stepId"] = stepId
         }
@@ -10715,12 +11066,16 @@ final class WatchConnectivityManager: NSObject, WCSessionDelegate {
     /// Decrementa il contatore della sezione (-1)
     func decrementMainCounter() {
         guard var current = activeProject, current.currentCount > 0 else { return }
+        let oldCount = current.currentCount
         current.currentCount -= 1
         if current.totalRowsWorked > 0 { current.totalRowsWorked -= 1 }
         updateProjectLocally(current)
         playHaptic(.directionDown)
         
-        var payload: [String: Any] = ["newCount": current.currentCount]
+        var payload: [String: Any] = [
+            "newCount": current.currentCount,
+            "oldCount": oldCount
+        ]
         if let stepId = current.activeStepId {
             payload["stepId"] = stepId
         }
@@ -10735,24 +11090,32 @@ final class WatchConnectivityManager: NSObject, WCSessionDelegate {
         updateProjectLocally(current)
     }
     
-    /// Invia il comando di impostazione contatore assoluto a iPhone
-    func sendSetMainCounterCommand(to value: Int) {
+    /// Invia il comando di impostazione contatore (con oldCount per applicazione delta) a iPhone
+    func sendSetMainCounterCommand(to value: Int, oldCount: Int? = nil) {
         guard let current = activeProject, value >= 0 else { return }
-        var payload: [String: Any] = ["newCount": value]
+        let effectiveOldCount = oldCount ?? current.currentCount
+        var payload: [String: Any] = [
+            "newCount": value,
+            "oldCount": effectiveOldCount
+        ]
         if let stepId = current.activeStepId {
             payload["stepId"] = stepId
         }
         sendCommand(.setMainCounter, projectId: current.id, data: payload)
     }
     
-    /// Imposta direttamente un valore (es. tramite Digital Crown o input manuale)
+    /// Imposta direttamente un valore (es. tramite input manuale)
     func setMainCounter(to value: Int) {
         guard var current = activeProject, value >= 0, current.currentCount != value else { return }
+        let oldCount = current.currentCount
         current.currentCount = value
         updateProjectLocally(current)
         playHaptic(.click)
         
-        var payload: [String: Any] = ["newCount": value]
+        var payload: [String: Any] = [
+            "newCount": value,
+            "oldCount": oldCount
+        ]
         if let stepId = current.activeStepId {
             payload["stepId"] = stepId
         }
@@ -10982,6 +11345,7 @@ struct WatchCounterView: View {
     @State private var showingProjectList = false
     @State private var crownDebounceTask: Task<Void, Never>? = nil
     @State private var isCrownDebouncing = false
+    @State private var crownStartCount: Int? = nil
     
     private var project: WatchProjectSummary? {
         watchManager.activeProject
@@ -11014,7 +11378,9 @@ struct WatchCounterView: View {
                     watchManager.requestSyncFromPhone()
                 }
                 .onChange(of: project.currentCount) { _, newCount in
-                    crownValue = Double(newCount)
+                    if !isCrownDebouncing {
+                        crownValue = Double(newCount)
+                    }
                 }
             } else {
                 emptyStateView
@@ -11156,19 +11522,22 @@ struct WatchCounterView: View {
             let intVal = max(0, Int(newValue))
             if intVal != project.currentCount {
                 // Aggiornamento locale immediato per zero latenza visiva (Patch 2d)
-                watchManager.updateMainCounterLocally(to: intVal)
                 if !isCrownDebouncing {
                     isCrownDebouncing = true
+                    crownStartCount = project.currentCount
                     watchManager.beginCrownDebounce()
                 }
+                watchManager.updateMainCounterLocally(to: intVal)
                 crownDebounceTask?.cancel()
                 crownDebounceTask = Task {
                     try? await Task.sleep(nanoseconds: 250_000_000)
                     guard !Task.isCancelled else { return }
                     isCrownDebouncing = false
                     watchManager.endCrownDebounce()
-                    // Trasmette a iPhone solo a rotazione ultimata
-                    watchManager.sendSetMainCounterCommand(to: intVal)
+                    let startCount = crownStartCount ?? project.currentCount
+                    crownStartCount = nil
+                    // Trasmette a iPhone solo a rotazione ultimata con oldCount per calcolo delta
+                    watchManager.sendSetMainCounterCommand(to: intVal, oldCount: startCount)
                 }
             }
         }
@@ -11176,6 +11545,7 @@ struct WatchCounterView: View {
             if isCrownDebouncing {
                 isCrownDebouncing = false
                 crownDebounceTask?.cancel()
+                crownStartCount = nil
                 watchManager.endCrownDebounce()
             }
         }
