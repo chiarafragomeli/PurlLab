@@ -3,6 +3,13 @@ import XCTest
 
 final class WatchModelsTests: XCTestCase {
     
+    override func tearDown() async throws {
+        await MainActor.run {
+            WatchConnectivityManager.shared.resetInFlightForTesting()
+        }
+        try await super.tearDown()
+    }
+    
     func testWatchProjectSummaryCodable() throws {
         let summary = WatchProjectSummary(
             id: UUID().uuidString,
@@ -389,6 +396,68 @@ final class WatchModelsTests: XCTestCase {
         XCTAssertEqual(fakeTransport.transferredUserInfos.first?["command"] as? String, WatchCommandType.incrementMainCounter.rawValue)
         // 3. Il contatore in volo deve essere riallineato a 0
         XCTAssertEqual(watchManager.inFlightCommandsCount, 0)
+    }
+    
+    @MainActor
+    func testInFlightCommandTimeoutDecrementsCountAndRequestsFullSync() async throws {
+        let watchManager = WatchConnectivityManager.shared
+        let fakeTransport = FakeWatchTransport()
+        fakeTransport.isReachable = true
+        // Non impostiamo né replyToReturn né errorToReturn: il trasporto simula un blocco / mancata risposta
+        fakeTransport.replyToReturn = nil
+        fakeTransport.errorToReturn = nil
+        watchManager.transport = fakeTransport
+        // Timeout breve per il test: 30ms anziché 8s
+        watchManager.inFlightCommandTimeoutNanoseconds = 30_000_000
+        
+        let projId = UUID().uuidString
+        let summary = WatchProjectSummary(
+            id: projId,
+            title: "Test Timeout",
+            designer: "",
+            selectedSize: "",
+            totalSecondsWorked: 0,
+            isTimerRunning: false,
+            activeStepId: nil,
+            currentSectionTitle: "",
+            currentStepTitle: "",
+            currentStepIndex: 0,
+            totalStepsCount: 1,
+            isStepCompleted: false,
+            counterLabel: "Ferri",
+            currentCount: 0,
+            targetCount: nil,
+            currentStitches: nil,
+            stitchesBefore: nil,
+            stitchesAfter: nil,
+            canGoPrevious: false,
+            canGoNext: false,
+            totalStitchesWorked: 0,
+            totalRowsWorked: 0,
+            extraCounterLabels: [],
+            extraCounterValues: []
+        )
+        watchManager.projects = [summary]
+        watchManager.activeProjectId = projId
+        
+        watchManager.incrementMainCounter()
+        
+        // Subito dopo l'invio, il comando è in volo
+        XCTAssertEqual(watchManager.inFlightCommandsCount, 1)
+        XCTAssertEqual(fakeTransport.sentMessages.count, 1)
+        XCTAssertEqual(fakeTransport.sentMessages.first?["command"] as? String, WatchCommandType.incrementMainCounter.rawValue)
+        
+        // Attendi che scada il timeout (60ms > 30ms)
+        try await Task.sleep(nanoseconds: 60_000_000)
+        
+        // Allo scadere:
+        // 1. inFlightCommandsCount deve essere decrementato (e con il nuovo sendCommand di fullSync, se fakeTransport non risponde, fullSync va in volo oppure è scattato requestFullSync)
+        // Verifichiamo che è stato inviato il comando di requestFullSync:
+        XCTAssertGreaterThanOrEqual(fakeTransport.sentMessages.count, 2)
+        XCTAssertEqual(fakeTransport.sentMessages.last?["command"] as? String, WatchCommandType.requestFullSync.rawValue)
+        
+        // Ripristina timeout di default a 8s e cancella comandi pendenti
+        watchManager.resetInFlightForTesting()
     }
 }
 

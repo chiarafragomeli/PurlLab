@@ -45,6 +45,11 @@ final class WatchConnectivityManager: NSObject, WCSessionDelegate {
     private(set) var inFlightCommandsCount: Int = 0
     var transport: (any WatchTransport)?
     
+    /// Timeout per ciascun comando in volo (default: 8 secondi come da specifica)
+    var inFlightCommandTimeoutNanoseconds: UInt64 = 8_000_000_000
+    private var inFlightTimeoutTasks: [String: Task<Void, Never>] = [:]
+    private var activeInFlightCommandIds = Set<String>()
+    
     private let userDefaultsKey = "purl_lab_watch_cache_v2"
     
     var activeProject: WatchProjectSummary? {
@@ -198,8 +203,12 @@ final class WatchConnectivityManager: NSObject, WCSessionDelegate {
     }
     
     /// Richiede sincronizzazione completa a iPhone
-    func requestSyncFromPhone() {
+    func requestFullSync() {
         sendCommand(.requestFullSync, projectId: activeProjectId ?? "", data: [:])
+    }
+    
+    func requestSyncFromPhone() {
+        requestFullSync()
     }
     
     /// Segnala l'inizio del debounce della corona contando il periodo come "in volo" (Patch 2b)
@@ -210,6 +219,25 @@ final class WatchConnectivityManager: NSObject, WCSessionDelegate {
     /// Segnala la fine del debounce della corona
     func endCrownDebounce() {
         inFlightCommandsCount = max(0, inFlightCommandsCount - 1)
+    }
+    
+    /// Rimuove il task di timeout e decrementa il contatore in volo
+    func completeInFlightCommand(commandId: String) {
+        guard activeInFlightCommandIds.remove(commandId) != nil else { return }
+        if let task = inFlightTimeoutTasks.removeValue(forKey: commandId) {
+            task.cancel()
+        }
+        inFlightCommandsCount = max(0, inFlightCommandsCount - 1)
+    }
+    
+    func resetInFlightForTesting() {
+        for (_, task) in inFlightTimeoutTasks {
+            task.cancel()
+        }
+        inFlightTimeoutTasks.removeAll()
+        activeInFlightCommandIds.removeAll()
+        inFlightCommandsCount = 0
+        inFlightCommandTimeoutNanoseconds = 8_000_000_000
     }
     
     // MARK: - Invio Comandi a iPhone via WatchConnectivity
@@ -226,11 +254,26 @@ final class WatchConnectivityManager: NSObject, WCSessionDelegate {
         for (k, v) in data { message[k] = v }
         
         inFlightCommandsCount += 1
+        activeInFlightCommandIds.insert(commandId)
         
         let payload = WatchMessagePayload(message: message)
         if transport.isReachable {
+            let timeoutTask = Task { @MainActor [weak self] in
+                try? await Task.sleep(nanoseconds: self?.inFlightCommandTimeoutNanoseconds ?? 8_000_000_000)
+                guard !Task.isCancelled, let self = self else { return }
+                if self.activeInFlightCommandIds.remove(commandId) != nil {
+                    self.inFlightTimeoutTasks.removeValue(forKey: commandId)
+                    self.inFlightCommandsCount = max(0, self.inFlightCommandsCount - 1)
+                    // Scadenza di 8 secondi: decrementa il contatore e riallinea con requestFullSync
+                    if command != .requestFullSync {
+                        self.requestFullSync()
+                    }
+                }
+            }
+            inFlightTimeoutTasks[commandId] = timeoutTask
             Self.sendSessionMessageReachable(transport, payload: payload)
         } else {
+            activeInFlightCommandIds.remove(commandId)
             inFlightCommandsCount = max(0, inFlightCommandsCount - 1)
             // Se iPhone è bloccato o in tasca, trasferisce in background
             transport.transferUserInfoFallback(message)
@@ -241,12 +284,13 @@ final class WatchConnectivityManager: NSObject, WCSessionDelegate {
     /// non ereditino l'isolamento @MainActor evitando crash EXC_BREAKPOINT (dispatch_assert_queue_fail)
     /// quando WCSession li invoca sulla propria coda in background.
     private nonisolated static func sendSessionMessageReachable(_ transport: any WatchTransport, payload: WatchMessagePayload) {
+        let commandId = payload.message["commandId"] as? String ?? ""
         transport.sendMessage(payload.message, replyHandler: { reply in
             let syncData = reply["syncData"] as? Data
             let error = reply["error"] as? String
             Task { @MainActor in
                 let manager = WatchConnectivityManager.shared
-                manager.inFlightCommandsCount = max(0, manager.inFlightCommandsCount - 1)
+                manager.completeInFlightCommand(commandId: commandId)
                 if let error = error {
                     // iPhone non è pronto o ha risposto con errore: fallback transferUserInfo per mantenere il comando in coda
                     transport.transferUserInfoFallback(payload.message)
@@ -257,7 +301,7 @@ final class WatchConnectivityManager: NSObject, WCSessionDelegate {
         }, errorHandler: { _ in
             Task { @MainActor in
                 let manager = WatchConnectivityManager.shared
-                manager.inFlightCommandsCount = max(0, manager.inFlightCommandsCount - 1)
+                manager.completeInFlightCommand(commandId: commandId)
             }
             // In caso di errore temporaneo, salva e invia in background (deduplicato su iPhone tramite commandId)
             transport.transferUserInfoFallback(payload.message)
