@@ -41,6 +41,7 @@ final class WatchCommandCoordinator {
     
     private var inFlightTimeoutTasks: [String: Task<Void, Never>] = [:]
     private var activeInFlightCommandIds = Set<String>()
+    private var lastCommandDateByProjectId: [String: Date] = [:]
     
     var onFullSyncNeeded: (@MainActor () -> Void)?
     var onSyncDataReceived: (@MainActor (Data) -> Void)?
@@ -72,6 +73,7 @@ final class WatchCommandCoordinator {
         }
         inFlightTimeoutTasks.removeAll()
         activeInFlightCommandIds.removeAll()
+        lastCommandDateByProjectId.removeAll()
         inFlightCommandsCount = 0
         inFlightCommandTimeoutNanoseconds = 8_000_000_000
         clock = SystemClock()
@@ -84,12 +86,14 @@ final class WatchCommandCoordinator {
     ) {
         guard let transport = self.transport else { return }
         let commandId = UUID().uuidString
+        let commandDate = clock.now
+        lastCommandDateByProjectId[projectId] = commandDate
         
         var message: [String: Any] = [
             "commandId": commandId,
             "command": command.rawValue,
             "projectId": projectId,
-            "timestamp": clock.now.timeIntervalSince1970
+            "timestamp": commandDate.timeIntervalSince1970
         ]
         for (k, v) in data { message[k] = v }
         
@@ -104,11 +108,8 @@ final class WatchCommandCoordinator {
                 if self.activeInFlightCommandIds.remove(commandId) != nil {
                     self.inFlightTimeoutTasks.removeValue(forKey: commandId)
                     self.inFlightCommandsCount = max(0, self.inFlightCommandsCount - 1)
-                    // Fallback transferUserInfo allo scadere del timeout prima di requestFullSync
+                    // Fallback transferUserInfo allo scadere del timeout (NON chiama requestFullSync subito)
                     transport.transferUserInfoFallback(message)
-                    if command != .requestFullSync {
-                        self.onFullSyncNeeded?()
-                    }
                 }
             }
             inFlightTimeoutTasks[commandId] = timeoutTask
@@ -118,6 +119,42 @@ final class WatchCommandCoordinator {
             inFlightCommandsCount = max(0, inFlightCommandsCount - 1)
             transport.transferUserInfoFallback(message)
         }
+    }
+    
+    /// Verifica se il contatore locale deve rimanere protetto contro sovrascritture da stati non ancora allineati di iPhone.
+    /// Il contatore locale resta protetto finché non arriva uno stato dell'iPhone con timestamp successivo all'ultimo comando.
+    func shouldProtectLocalCounter(projectId: String, incomingTimestamp: Date) -> Bool {
+        if inFlightCommandsCount > 0 { return true }
+        if let lastCommandDate = lastCommandDateByProjectId[projectId] {
+            return incomingTimestamp <= lastCommandDate
+        }
+        return false
+    }
+    
+    /// Rilascia la protezione se lo stato dell'iPhone ha un timestamp successivo all'ultimo comando inviato
+    func clearProtectionIfSubsequent(projectId: String, incomingTimestamp: Date) {
+        if let lastCommandDate = lastCommandDateByProjectId[projectId], incomingTimestamp > lastCommandDate {
+            lastCommandDateByProjectId.removeValue(forKey: projectId)
+        }
+    }
+    
+    /// Unisce lo stato di sincronizzazione ricevuto da iPhone preservando i contatori locali se protetti
+    func mergeSyncState(
+        _ state: WatchSyncState,
+        into localProjects: inout [WatchProjectSummary]
+    ) {
+        var updated = state.projects
+        for (idx, proj) in updated.enumerated() {
+            if shouldProtectLocalCounter(projectId: proj.id, incomingTimestamp: state.timestamp),
+               let local = localProjects.first(where: { $0.id == proj.id }) {
+                updated[idx].currentCount = local.currentCount
+                updated[idx].totalRowsWorked = local.totalRowsWorked
+                updated[idx].totalStitchesWorked = local.totalStitchesWorked
+            } else {
+                clearProtectionIfSubsequent(projectId: proj.id, incomingTimestamp: state.timestamp)
+            }
+        }
+        localProjects = updated
     }
     
     private nonisolated static func sendSessionMessageReachable(

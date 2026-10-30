@@ -301,22 +301,8 @@ final class WatchConnectivityManager: NSObject, WCSessionDelegate {
             return
         }
         
-        // Se ci sono comandi in volo residui DOPO il decremento, proteggi il contatore del progetto attivo locale
-        // per evitare che risposte intermedie o sync ritardate sovrascrivano i tap rapidi dell'utente (Patch 2a/2b).
-        // Se inFlightCommandsCount == 0 (es. reply dell'ultimo comando in volo),
-        // accetta integralmente lo stato dell'iPhone riallineando currentCount, totali e step attivo.
-        if inFlightCommandsCount > 0, let activeId = self.activeProjectId,
-           let localActive = self.projects.first(where: { $0.id == activeId }) {
-            var updatedProjects = state.projects
-            if let idx = updatedProjects.firstIndex(where: { $0.id == activeId }) {
-                updatedProjects[idx].currentCount = localActive.currentCount
-                updatedProjects[idx].totalRowsWorked = localActive.totalRowsWorked
-                updatedProjects[idx].totalStitchesWorked = localActive.totalStitchesWorked
-            }
-            self.projects = updatedProjects
-        } else {
-            self.projects = state.projects
-        }
+        // Unisce lo stato preservando i contatori locali finché non arriva uno stato con timestamp successivo
+        coordinator.mergeSyncState(state, into: &self.projects)
         
         if let newActive = state.activeProjectId {
             self.activeProjectId = newActive

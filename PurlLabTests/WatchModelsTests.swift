@@ -307,7 +307,7 @@ final class WatchModelsTests: XCTestCase {
     }
     
     @MainActor
-    func testInFlightCommandTimeoutDecrementsCountAndRequestsFullSync() async throws {
+    func testInFlightCommandTimeoutDecrementsCountAndFallsBackWithoutImmediateFullSync() async throws {
         let coordinator = WatchCommandCoordinator()
         let fakeTransport = FakeWatchTransport()
         fakeTransport.isReachable = true
@@ -352,13 +352,124 @@ final class WatchModelsTests: XCTestCase {
         XCTAssertEqual(fakeTransport.transferredUserInfos.first?["commandId"] as? String, originalCommandId)
         XCTAssertEqual(fakeTransport.transferredUserInfos.first?["command"] as? String, WatchCommandType.incrementMainCounter.rawValue)
         
-        // 2. Viene poi invocato il callback onFullSyncNeeded per riallineare lo stato
-        XCTAssertTrue(fullSyncRequested)
+        // 2. NON deve chiamare requestFullSync subito
+        XCTAssertFalse(fullSyncRequested, "Allo scadere degli 8s NON deve chiamare requestFullSync subito")
         
         // 3. Il contatore comandi in volo è decrementato
         XCTAssertEqual(coordinator.inFlightCommandsCount, 0)
         
         // Ripristina timeout di default a 8s e cancella comandi pendenti
+        coordinator.resetForTesting()
+    }
+    
+    @MainActor
+    func testInFlightCommandTimeoutDoesNotCallFullSyncAndProtectsLocalCounterUntilSubsequentTimestamp() async throws {
+        let testClock = TestClock()
+        let fakeTransport = FakeWatchTransport()
+        let coordinator = WatchCommandCoordinator(transport: fakeTransport, clock: testClock)
+        
+        var fullSyncRequested = false
+        coordinator.onFullSyncNeeded = {
+            fullSyncRequested = true
+        }
+        
+        let projectId = UUID().uuidString
+        let initialSummary = WatchProjectSummary(
+            id: projectId,
+            title: "Test Project",
+            designer: "Test Designer",
+            selectedSize: "M",
+            totalSecondsWorked: 100,
+            isTimerRunning: false,
+            activeStepId: nil,
+            currentSectionTitle: "Corpo",
+            currentStepTitle: "Giro 10",
+            currentStepIndex: 0,
+            totalStepsCount: 1,
+            isStepCompleted: false,
+            counterLabel: "Giri",
+            currentCount: 10,
+            targetCount: 20,
+            currentStitches: 50,
+            stitchesBefore: nil,
+            stitchesAfter: nil,
+            canGoPrevious: false,
+            canGoNext: false,
+            totalStitchesWorked: 500,
+            totalRowsWorked: 10,
+            extraCounterLabels: [],
+            extraCounterValues: []
+        )
+        var localProjects = [initialSummary]
+        
+        // 1. Invio comando di incremento al timestamp t0 (es. 1000s)
+        testClock.advance(by: 1000.0)
+        let commandTimestamp = testClock.now
+        
+        // Il Watch incrementa il contatore locale a 11
+        localProjects[0].currentCount = 11
+        coordinator.sendCommand(.incrementMainCounter, projectId: projectId, data: ["newCount": 11, "oldCount": 10])
+        
+        XCTAssertEqual(coordinator.inFlightCommandsCount, 1)
+        XCTAssertEqual(fakeTransport.sentMessages.count, 1)
+        let commandId = fakeTransport.sentMessages.first?["commandId"] as? String
+        
+        // Cede l'esecuzione per consentire l'avvio del task di timeout
+        for _ in 0..<5 {
+            await Task.yield()
+        }
+        
+        // 2. Avanzamento del clock di 8s per far scadere il timeout
+        testClock.advance(by: 8.0)
+        for _ in 0..<5 {
+            await Task.yield()
+        }
+        
+        // Allo scadere: reinviato via fallback con lo stesso commandId e NON chiama requestFullSync subito
+        XCTAssertEqual(fakeTransport.transferredUserInfos.count, 1)
+        XCTAssertEqual(fakeTransport.transferredUserInfos.first?["commandId"] as? String, commandId)
+        XCTAssertFalse(fullSyncRequested, "Allo scadere degli 8s NON deve chiamare requestFullSync subito")
+        XCTAssertEqual(coordinator.inFlightCommandsCount, 0)
+        
+        // 3. Arriva uno stato da iPhone con timestamp precedente o contemporaneo al comando (es. sync in ritardo con currentCount = 10)
+        var phoneStateOld = initialSummary
+        phoneStateOld.currentCount = 10
+        let incomingOldSyncState = WatchSyncState(
+            projects: [phoneStateOld],
+            activeProjectId: projectId,
+            timestamp: commandTimestamp // timestamp <= commandTimestamp
+        )
+        
+        coordinator.mergeSyncState(incomingOldSyncState, into: &localProjects)
+        // Il contatore locale deve rimanere protetto (11, non sovrascritto da 10)
+        XCTAssertEqual(localProjects.first?.currentCount, 11, "Il contatore locale resta protetto finché lo stato ha timestamp <= al comando")
+        
+        // 4. Arriva uno stato da iPhone con timestamp successivo al comando (es. iPhone ha elaborato il comando e rimanda lo stato a t = commandTimestamp + 5)
+        let subsequentTimestamp = commandTimestamp.addingTimeInterval(5.0)
+        var phoneStateNew = initialSummary
+        phoneStateNew.currentCount = 11
+        let incomingNewSyncState = WatchSyncState(
+            projects: [phoneStateNew],
+            activeProjectId: projectId,
+            timestamp: subsequentTimestamp // timestamp > commandTimestamp
+        )
+        
+        coordinator.mergeSyncState(incomingNewSyncState, into: &localProjects)
+        // Protezione rilasciata, stato accettato
+        XCTAssertEqual(localProjects.first?.currentCount, 11)
+        XCTAssertFalse(coordinator.shouldProtectLocalCounter(projectId: projectId, incomingTimestamp: subsequentTimestamp))
+        
+        // 5. Un ulteriore stato successivo con valore aggiornato da iPhone viene accettato normalmente
+        var phoneStateUpdated = initialSummary
+        phoneStateUpdated.currentCount = 12
+        let subsequentState2 = WatchSyncState(
+            projects: [phoneStateUpdated],
+            activeProjectId: projectId,
+            timestamp: subsequentTimestamp.addingTimeInterval(1.0)
+        )
+        coordinator.mergeSyncState(subsequentState2, into: &localProjects)
+        XCTAssertEqual(localProjects.first?.currentCount, 12, "Dopo il rilascio della protezione, i nuovi stati iPhone vengono applicati normalmente")
+        
         coordinator.resetForTesting()
     }
     
