@@ -63,16 +63,19 @@ struct PurlLabApp: App {
     @State private var storageResult: Result<ModelContainer, Error> = PurlLabApp.initialStorageResult
     @State private var showingTemporaryStoreAlert: Bool = false
     
+    init() {
+        if let container = PurlLabApp.sharedModelContainer {
+            let context = container.mainContext
+            WatchConnectivityIOSManager.shared.configure(with: context)
+            TimerManager.shared.configure(with: context)
+        }
+    }
+    
     var body: some Scene {
         WindowGroup {
             switch storageResult {
             case .success(let container):
                 ProjectListView()
-                    .onAppear {
-                        let context = container.mainContext
-                        WatchConnectivityIOSManager.shared.configure(with: context)
-                        TimerManager.shared.configure(with: context)
-                    }
                     .modelContainer(container)
                 
             case .failure(let error):
@@ -82,6 +85,9 @@ struct PurlLabApp: App {
                         do {
                             let container = try Self.createPersistentContainer()
                             storageLogger.info("Riprova: ModelContainer persistente inizializzato con successo")
+                            let context = container.mainContext
+                            WatchConnectivityIOSManager.shared.configure(with: context)
+                            TimerManager.shared.configure(with: context)
                             storageResult = .success(container)
                         } catch {
                             storageLogger.error("Riprova fallita: \(error.localizedDescription)")
@@ -98,6 +104,9 @@ struct PurlLabApp: App {
                         do {
                             let inMemoryContainer = try Self.createTemporaryInMemoryContainer()
                             storageLogger.warning("Avvio con archivio temporaneo in memoria confermato dall'utente")
+                            let context = inMemoryContainer.mainContext
+                            WatchConnectivityIOSManager.shared.configure(with: context)
+                            TimerManager.shared.configure(with: context)
                             storageResult = .success(inMemoryContainer)
                         } catch {
                             storageLogger.error("Inizializzazione archivio temporaneo fallita: \(error.localizedDescription)")

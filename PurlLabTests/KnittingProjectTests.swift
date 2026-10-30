@@ -492,8 +492,23 @@ final class KnittingProjectTests: XCTestCase {
         )
         
         // Deve ritornare syncData corrente e non applicare nulla
-        XCTAssertNotNil(syncData)
+        XCTAssertNotNil(syncData["syncData"])
         XCTAssertEqual(step.currentStepCount, 10, "Il contatore del progetto non deve essere toccato quando il projectId non corrisponde")
         XCTAssertEqual(manager.activeProjectId, project.id, "activeProjectId non deve essere mutato verso un progetto inesistente")
+    }
+    
+    func testHandleIncomingCommandReturnsNotReadyWhenModelContextIsNil() {
+        let manager = WatchConnectivityIOSManager.shared
+        manager.configure(with: nil)
+        
+        let reply = manager.handleIncomingCommand(
+            commandRaw: WatchCommandType.incrementMainCounter.rawValue,
+            projectId: "some-project-id",
+            stepId: nil,
+            newCount: nil,
+            index: nil
+        )
+        
+        XCTAssertEqual(reply["error"] as? String, "notReady")
     }
 }

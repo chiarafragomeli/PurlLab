@@ -236,19 +236,29 @@ final class WatchConnectivityIOSManager: NSObject, WCSessionDelegate {
         index: Int?,
         commandId: String? = nil,
         timestamp: TimeInterval? = nil
-    ) -> Data? {
+    ) -> [String: Any] {
+        guard let context = modelContext else {
+            watchLogger.warning("handleIncomingCommand: modelContext è nil (app non ancora pronta)")
+            return ["error": "notReady"]
+        }
+        
         guard let commandRaw = commandRaw,
-              let command = WatchCommandType(rawValue: commandRaw),
-              let context = modelContext else {
-            return nil
+              let command = WatchCommandType(rawValue: commandRaw) else {
+            return ["error": "invalidCommand"]
         }
         
         let descriptor = FetchDescriptor<KnittingProject>(sortBy: [SortDescriptor(\.updatedAt, order: .reverse)])
-        guard let allProjects = try? context.fetch(descriptor), !allProjects.isEmpty else { return nil }
+        guard let allProjects = try? context.fetch(descriptor), !allProjects.isEmpty else {
+            return ["error": "noProjects"]
+        }
         
         // Deduplica comandi tramite ID univoco (idempotenza contro duplicati da retry WCSession)
         if let cmdId = commandId, isDuplicateCommand(cmdId) {
-            return currentSyncData(for: allProjects)
+            if let syncData = currentSyncData(for: allProjects) {
+                return ["syncData": syncData]
+            } else {
+                return [:]
+            }
         }
         
         let targetProject: KnittingProject?
@@ -256,7 +266,11 @@ final class WatchConnectivityIOSManager: NSObject, WCSessionDelegate {
             guard let uuid = UUID(uuidString: pIdString),
                   let match = allProjects.first(where: { $0.id == uuid }) else {
                 watchLogger.warning("Comando watch rifiutato: projectId '\(pIdString)' non corrisponde ad alcun progetto valido")
-                return currentSyncData(for: allProjects)
+                if let syncData = currentSyncData(for: allProjects) {
+                    return ["syncData": syncData]
+                } else {
+                    return [:]
+                }
             }
             targetProject = match
         } else if let activeId = self.activeProjectId, let match = allProjects.first(where: { $0.id == activeId }) {
@@ -266,7 +280,7 @@ final class WatchConnectivityIOSManager: NSObject, WCSessionDelegate {
         }
         
         guard let project = targetProject else {
-            return nil
+            return ["error": "projectNotFound"]
         }
         
         let previousActiveProjectId = self.activeProjectId
@@ -307,7 +321,11 @@ final class WatchConnectivityIOSManager: NSObject, WCSessionDelegate {
         let effectiveStepKey = stepId ?? currentStep?.id.uuidString ?? "project_\(project.id.uuidString)"
         if isCounterCommand, let cmdTimestamp = timestamp {
             if isStaleCounterCommand(stepKey: effectiveStepKey, timestamp: cmdTimestamp) {
-                return currentSyncData(for: allProjects)
+                if let syncData = currentSyncData(for: allProjects) {
+                    return ["syncData": syncData]
+                } else {
+                    return [:]
+                }
             }
             recordAppliedTimestamp(stepKey: effectiveStepKey, timestamp: cmdTimestamp)
         }
@@ -485,12 +503,14 @@ final class WatchConnectivityIOSManager: NSObject, WCSessionDelegate {
             activeProjectId: self.activeProjectId?.uuidString ?? summaries.first?.id,
             timestamp: Date()
         )
-        guard let syncData = try? JSONEncoder().encode(state) else { return nil }
+        guard let syncData = try? JSONEncoder().encode(state) else {
+            return ["error": "encodingFailed"]
+        }
         
         // Aggiorna l'applicationContext con debounce (~200ms) evitando flood di WCSession
         scheduleDebouncedApplicationContextUpdate(syncData: syncData)
         
-        return syncData
+        return ["syncData": syncData]
     }
     
     /// Mantiene allineato il Contatore Globale memorizzato in RowCounter (se presente)
@@ -530,11 +550,8 @@ final class WatchConnectivityIOSManager: NSObject, WCSessionDelegate {
         nonisolated(unsafe) let safeReplyHandler = replyHandler
         
         Task { @MainActor in
-            if let replyData = self.handleIncomingCommand(commandRaw: commandRaw, projectId: projectId, stepId: stepId, newCount: newCount, index: index, commandId: commandId, timestamp: timestamp) {
-                safeReplyHandler(["syncData": replyData])
-            } else {
-                safeReplyHandler([:])
-            }
+            let reply = self.handleIncomingCommand(commandRaw: commandRaw, projectId: projectId, stepId: stepId, newCount: newCount, index: index, commandId: commandId, timestamp: timestamp)
+            safeReplyHandler(reply)
         }
     }
     

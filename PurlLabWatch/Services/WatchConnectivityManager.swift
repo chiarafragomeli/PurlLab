@@ -16,6 +16,23 @@ import SwiftUI
 @testable import PurlLab
 #endif
 
+// MARK: - Watch Transport Protocol (per testing e disaccoppiamento)
+protocol WatchTransport: AnyObject, Sendable {
+    var isReachable: Bool { get }
+    func sendMessage(_ message: [String: Any], replyHandler: (([String: Any]) -> Void)?, errorHandler: ((Error) -> Void)?)
+    func transferUserInfoFallback(_ userInfo: [String: Any])
+}
+
+extension WCSession: @retroactive @unchecked Sendable, WatchTransport {
+    func transferUserInfoFallback(_ userInfo: [String: Any]) {
+        _ = self.transferUserInfo(userInfo)
+    }
+}
+
+private struct WatchMessagePayload: @unchecked Sendable {
+    let message: [String: Any]
+}
+
 @MainActor
 @Observable
 final class WatchConnectivityManager: NSObject, WCSessionDelegate {
@@ -26,6 +43,7 @@ final class WatchConnectivityManager: NSObject, WCSessionDelegate {
     var isConnectedToPhone: Bool = false
     var lastSyncDate: Date? = nil
     private(set) var inFlightCommandsCount: Int = 0
+    var transport: (any WatchTransport)?
     
     private let userDefaultsKey = "purl_lab_watch_cache_v2"
     
@@ -38,6 +56,9 @@ final class WatchConnectivityManager: NSObject, WCSessionDelegate {
     
     override private init() {
         super.init()
+        if WCSession.isSupported() {
+            self.transport = WCSession.default
+        }
         loadLocalCache()
         setupWCSession()
     }
@@ -193,8 +214,7 @@ final class WatchConnectivityManager: NSObject, WCSessionDelegate {
     
     // MARK: - Invio Comandi a iPhone via WatchConnectivity
     private func sendCommand(_ command: WatchCommandType, projectId: String, data: [String: Any]) {
-        guard WCSession.isSupported() else { return }
-        let session = WCSession.default
+        guard let transport = self.transport ?? (WCSession.isSupported() ? WCSession.default : nil) else { return }
         let commandId = UUID().uuidString
         
         var message: [String: Any] = [
@@ -207,25 +227,30 @@ final class WatchConnectivityManager: NSObject, WCSessionDelegate {
         
         inFlightCommandsCount += 1
         
-        if session.isReachable {
-            Self.sendSessionMessageReachable(session, message: message)
+        let payload = WatchMessagePayload(message: message)
+        if transport.isReachable {
+            Self.sendSessionMessageReachable(transport, payload: payload)
         } else {
             inFlightCommandsCount = max(0, inFlightCommandsCount - 1)
             // Se iPhone è bloccato o in tasca, trasferisce in background
-            session.transferUserInfo(message)
+            transport.transferUserInfoFallback(message)
         }
     }
     
     /// Helper nonisolated per garantire che i blocchi replyHandler ed errorHandler
     /// non ereditino l'isolamento @MainActor evitando crash EXC_BREAKPOINT (dispatch_assert_queue_fail)
     /// quando WCSession li invoca sulla propria coda in background.
-    private nonisolated static func sendSessionMessageReachable(_ session: WCSession, message: [String: Any]) {
-        session.sendMessage(message, replyHandler: { reply in
+    private nonisolated static func sendSessionMessageReachable(_ transport: any WatchTransport, payload: WatchMessagePayload) {
+        transport.sendMessage(payload.message, replyHandler: { reply in
             let syncData = reply["syncData"] as? Data
+            let error = reply["error"] as? String
             Task { @MainActor in
                 let manager = WatchConnectivityManager.shared
                 manager.inFlightCommandsCount = max(0, manager.inFlightCommandsCount - 1)
-                if let syncData = syncData {
+                if let error = error {
+                    // iPhone non è pronto o ha risposto con errore: fallback transferUserInfo per mantenere il comando in coda
+                    transport.transferUserInfoFallback(payload.message)
+                } else if let syncData = syncData {
                     manager.handleSyncData(syncData)
                 }
             }
@@ -235,7 +260,7 @@ final class WatchConnectivityManager: NSObject, WCSessionDelegate {
                 manager.inFlightCommandsCount = max(0, manager.inFlightCommandsCount - 1)
             }
             // In caso di errore temporaneo, salva e invia in background (deduplicato su iPhone tramite commandId)
-            session.transferUserInfo(message)
+            transport.transferUserInfoFallback(payload.message)
         })
     }
     

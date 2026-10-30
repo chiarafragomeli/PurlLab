@@ -338,4 +338,78 @@ final class WatchModelsTests: XCTestCase {
         watchManager.endCrownDebounce()
         XCTAssertEqual(watchManager.inFlightCommandsCount, 0)
     }
+    
+    @MainActor
+    func testWatchTransportErrorNotReadyFallbacksToTransferUserInfo() async throws {
+        let watchManager = WatchConnectivityManager.shared
+        let fakeTransport = FakeWatchTransport()
+        fakeTransport.isReachable = true
+        fakeTransport.replyToReturn = ["error": "notReady"]
+        watchManager.transport = fakeTransport
+        
+        let projId = UUID().uuidString
+        let summary = WatchProjectSummary(
+            id: projId,
+            title: "Test Transport",
+            designer: "",
+            selectedSize: "",
+            totalSecondsWorked: 0,
+            isTimerRunning: false,
+            activeStepId: nil,
+            currentSectionTitle: "",
+            currentStepTitle: "",
+            currentStepIndex: 0,
+            totalStepsCount: 1,
+            isStepCompleted: false,
+            counterLabel: "Ferri",
+            currentCount: 0,
+            targetCount: nil,
+            currentStitches: nil,
+            stitchesBefore: nil,
+            stitchesAfter: nil,
+            canGoPrevious: false,
+            canGoNext: false,
+            totalStitchesWorked: 0,
+            totalRowsWorked: 0,
+            extraCounterLabels: [],
+            extraCounterValues: []
+        )
+        watchManager.projects = [summary]
+        watchManager.activeProjectId = projId
+        
+        watchManager.incrementMainCounter()
+        
+        // Attendi che il Task asincrono di risposta completi
+        try await Task.sleep(nanoseconds: 60_000_000)
+        
+        // 1. Il messaggio è stato inviato via sendMessage
+        XCTAssertEqual(fakeTransport.sentMessages.count, 1)
+        // 2. Poiché la risposta ha restituito error: notReady, deve essere scattato il fallback transferUserInfo
+        XCTAssertEqual(fakeTransport.transferredUserInfos.count, 1)
+        XCTAssertEqual(fakeTransport.transferredUserInfos.first?["command"] as? String, WatchCommandType.incrementMainCounter.rawValue)
+        // 3. Il contatore in volo deve essere riallineato a 0
+        XCTAssertEqual(watchManager.inFlightCommandsCount, 0)
+    }
+}
+
+// MARK: - FakeWatchTransport per testing disaccoppiato da WCSession
+final class FakeWatchTransport: @unchecked Sendable, WatchTransport {
+    var isReachable: Bool = true
+    var sentMessages: [[String: Any]] = []
+    var transferredUserInfos: [[String: Any]] = []
+    var replyToReturn: [String: Any]?
+    var errorToReturn: Error?
+    
+    func sendMessage(_ message: [String: Any], replyHandler: (([String: Any]) -> Void)?, errorHandler: ((Error) -> Void)?) {
+        sentMessages.append(message)
+        if let error = errorToReturn {
+            errorHandler?(error)
+        } else if let reply = replyToReturn {
+            replyHandler?(reply)
+        }
+    }
+    
+    func transferUserInfoFallback(_ userInfo: [String: Any]) {
+        transferredUserInfos.append(userInfo)
+    }
 }
