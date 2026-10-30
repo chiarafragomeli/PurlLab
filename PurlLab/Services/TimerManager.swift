@@ -5,6 +5,14 @@ import os
 
 private let timerLogger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.chiara.PurlLab", category: "timer")
 
+// MARK: - Modello Sessione Pending in attesa di salvataggio
+struct PendingTimerSession: Sendable, Equatable {
+    let projectId: UUID
+    let start: Date
+    let end: Date
+    let duration: TimeInterval
+}
+
 @MainActor
 @Observable
 final class TimerManager {
@@ -13,6 +21,7 @@ final class TimerManager {
     var isRunning: Bool = false
     var activeProjectId: UUID?
     var elapsedSecondsInCurrentSession: TimeInterval = 0
+    private(set) var pendingSessions: [PendingTimerSession] = []
     
     private var timer: Timer?
     var sessionStartDate: Date?
@@ -36,6 +45,33 @@ final class TimerManager {
     
     func configure(with modelContext: ModelContext?) {
         self.modelContext = modelContext
+        if modelContext != nil {
+            retryPendingSessions()
+        }
+    }
+    
+    /// Ritenta il salvataggio di eventuali sessioni rimaste pendenti a causa di errori o assenza di context
+    @discardableResult
+    func retryPendingSessions() -> Int {
+        guard !pendingSessions.isEmpty else { return 0 }
+        var remaining: [PendingTimerSession] = []
+        var succeededCount = 0
+        for pending in pendingSessions {
+            if persistSession(projectId: pending.projectId, start: pending.start, end: pending.end, duration: pending.duration) {
+                succeededCount += 1
+            } else {
+                remaining.append(pending)
+            }
+        }
+        pendingSessions = remaining
+        if succeededCount > 0 {
+            timerLogger.info("retryPendingSessions: salvate con successo \(succeededCount) sessioni pendenti")
+        }
+        return succeededCount
+    }
+    
+    func clearPendingSessionsForTesting() {
+        pendingSessions.removeAll()
     }
     
     // MARK: - Gestione Ciclo di Vita Centralizzata
@@ -81,6 +117,7 @@ final class TimerManager {
     /// Quando l'app torna in primo piano:
     /// Ricalcola matematicamente il tempo trascorso senza aver tenuto la CPU attiva in background.
     func handleAppWillEnterForeground() {
+        retryPendingSessions()
         guard isRunning, let start = sessionStartDate else { return }
         
         let now = Date()
@@ -133,6 +170,7 @@ final class TimerManager {
     
     // MARK: - Controlli Sessione
     func start(for projectId: UUID) {
+        retryPendingSessions()
         if isRunning && activeProjectId == projectId { return }
         if isRunning { _ = pause() }
         
@@ -161,15 +199,22 @@ final class TimerManager {
         let timeSinceInteraction = now.timeIntervalSince(lastInteractionDate)
         
         let duration: TimeInterval
+        let endDate: Date
         if timeSinceInteraction > maxAllowed {
             let effectiveEnd = lastInteractionDate.addingTimeInterval(maxAllowed)
             duration = max(0, min(rawElapsed, effectiveEnd.timeIntervalSince(start)))
+            endDate = effectiveEnd
         } else {
             duration = rawElapsed
+            endDate = now
         }
         
         if let projectId = activeProjectId, duration > 0 {
-            persistSession(projectId: projectId, start: start, end: now, duration: duration)
+            let saved = persistSession(projectId: projectId, start: start, end: endDate, duration: duration)
+            if !saved {
+                timerLogger.warning("pause: persistSession fallito per progetto \(projectId), conservata in coda pending")
+                pendingSessions.append(PendingTimerSession(projectId: projectId, start: start, end: endDate, duration: duration))
+            }
         }
         
         elapsedSecondsInCurrentSession = 0
@@ -197,6 +242,7 @@ final class TimerManager {
     /// reimpostando la data di riferimento per i secondi successivi, senza interrompere la sessione attiva.
     @discardableResult
     func flushElapsedToTotal() -> TimeInterval {
+        retryPendingSessions()
         guard isRunning, let start = sessionStartDate, let projectId = activeProjectId else { return 0 }
         let now = Date()
         let duration = max(0, now.timeIntervalSince(start))

@@ -25,6 +25,7 @@ final class TimerManagerTests: XCTestCase {
     
     override func tearDown() {
         _ = TimerManager.shared.pause()
+        TimerManager.shared.clearPendingSessionsForTesting()
         TimerManager.shared.configure(with: nil)
         WatchConnectivityIOSManager.shared.configure(with: nil)
         TimerManager.shared.autoPauseMinutes = 15.0
@@ -139,6 +140,51 @@ final class TimerManagerTests: XCTestCase {
         // Lavoro accreditato: da -300s fino a (-120s + 60s) = -60s => 240s
         XCTAssertEqual(session.durationSeconds, 240, accuracy: 1.0)
         XCTAssertEqual(project.totalSecondsWorked, 240, accuracy: 1.0)
+        let expectedEnd = now.addingTimeInterval(-60)
+        XCTAssertEqual(session.endDate?.timeIntervalSince1970 ?? 0, expectedEnd.timeIntervalSince1970, accuracy: 1.0)
+    }
+    
+    func testPausePreservesSessionAsPendingOnPersistFailureAndRetriesOnStartFlushOrForeground() async throws {
+        let project = KnittingProject(title: "Progetto Test Pending")
+        context.insert(project)
+        try context.save()
+        
+        TimerManager.shared.start(for: project.id)
+        try await Task.sleep(nanoseconds: 30_000_000)
+        
+        // Simula disconnessione / assenza del modelContext durante la pausa
+        TimerManager.shared.configure(with: nil)
+        
+        let duration = TimerManager.shared.pause()
+        XCTAssertGreaterThan(duration, 0)
+        XCTAssertFalse(TimerManager.shared.isRunning)
+        
+        // La sessione non deve essere andata perduta: deve trovarsi in pendingSessions
+        XCTAssertEqual(TimerManager.shared.pendingSessions.count, 1)
+        XCTAssertEqual(project.timerSessions.count, 0)
+        
+        // 1. Test recupero al foreground
+        TimerManager.shared.configure(with: context)
+        // Riconfigurando il context senza chiamare foreground la sessione viene già retriata da configure
+        XCTAssertEqual(TimerManager.shared.pendingSessions.count, 0)
+        XCTAssertEqual(project.timerSessions.count, 1)
+        
+        // 2. Test recupero al prossimo start
+        TimerManager.shared.clearPendingSessionsForTesting()
+        TimerManager.shared.start(for: project.id)
+        try await Task.sleep(nanoseconds: 20_000_000)
+        TimerManager.shared.configure(with: nil)
+        _ = TimerManager.shared.pause()
+        XCTAssertEqual(TimerManager.shared.pendingSessions.count, 1)
+        
+        TimerManager.shared.configure(with: context)
+        // Crea nuovo progetto e chiama start: deve svuotare le pendenti
+        let project2 = KnittingProject(title: "Progetto 2")
+        context.insert(project2)
+        try context.save()
+        TimerManager.shared.start(for: project2.id)
+        XCTAssertEqual(TimerManager.shared.pendingSessions.count, 0)
+        _ = TimerManager.shared.pause()
     }
     
     func testCancelTimerStopsTimerWithoutSavingDuration() async throws {
