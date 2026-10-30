@@ -326,4 +326,32 @@ final class TimerManagerTests: XCTestCase {
         XCTAssertNotEqual(TimerManager.shared.sessionStartDate, originalStart)
         XCTAssertEqual(project.timerSessions.count, 1)
     }
+    
+    func testRetryPendingSessionsDiscardsSessionIfProjectDeleted() async throws {
+        let project = KnittingProject(title: "Progetto Da Eliminare")
+        context.insert(project)
+        try context.save()
+        let projId = project.id
+        
+        TimerManager.shared.start(for: projId)
+        testClock.advance(by: 25)
+        
+        // Simula disconnessione / assenza del modelContext durante la pausa
+        TimerManager.shared.configure(with: nil)
+        _ = TimerManager.shared.pause()
+        
+        // La sessione è trattenuta in pendingSessions per errore temporaneo
+        XCTAssertEqual(TimerManager.shared.pendingSessions.count, 1)
+        XCTAssertEqual(TimerManager.shared.pendingSessions.first?.projectId, projId)
+        
+        // Ora l'utente elimina il progetto dall'archivio
+        context.delete(project)
+        try context.save()
+        
+        // Quando il modelContext torna disponibile, retryPendingSessions deve rilevare che il progetto non esiste più
+        // e SCARTARE la sessione invece di trattenerla all'infinito
+        TimerManager.shared.configure(with: context)
+        
+        XCTAssertTrue(TimerManager.shared.pendingSessions.isEmpty, "La sessione pendente per un progetto inesistente deve essere scartata dalla coda")
+    }
 }

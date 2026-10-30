@@ -13,6 +13,13 @@ struct PendingTimerSession: Sendable, Equatable {
     let duration: TimeInterval
 }
 
+// MARK: - Risultato del Salvataggio Sessione
+private enum PersistSessionResult {
+    case success
+    case temporaryError
+    case projectNotFound
+}
+
 @MainActor
 @Observable
 final class TimerManager {
@@ -51,22 +58,33 @@ final class TimerManager {
         }
     }
     
-    /// Ritenta il salvataggio di eventuali sessioni rimaste pendenti a causa di errori o assenza di context
+    /// Ritenta il salvataggio di eventuali sessioni rimaste pendenti a causa di errori o assenza di context.
+    /// Scarta dalla coda le sessioni il cui progetto non esiste più e trattiene solo quelle fallite per errori temporanei.
     @discardableResult
     func retryPendingSessions() -> Int {
         guard !pendingSessions.isEmpty else { return 0 }
         var remaining: [PendingTimerSession] = []
         var succeededCount = 0
+        var discardedCount = 0
+        
         for pending in pendingSessions {
-            if persistSession(projectId: pending.projectId, start: pending.start, end: pending.end, duration: pending.duration) {
+            switch persistSession(projectId: pending.projectId, start: pending.start, end: pending.end, duration: pending.duration) {
+            case .success:
                 succeededCount += 1
-            } else {
+            case .projectNotFound:
+                // Scarta dalla coda le sessioni il cui progetto non esiste più
+                discardedCount += 1
+            case .temporaryError:
+                // Trattieni solo quelle fallite per errori temporanei (es. context assente o store occupato)
                 remaining.append(pending)
             }
         }
         pendingSessions = remaining
         if succeededCount > 0 {
             timerLogger.info("retryPendingSessions: salvate con successo \(succeededCount) sessioni pendenti")
+        }
+        if discardedCount > 0 {
+            timerLogger.info("retryPendingSessions: scartate \(discardedCount) sessioni pendenti per progetti non più esistenti")
         }
         return succeededCount
     }
@@ -140,14 +158,19 @@ final class TimerManager {
     
     // MARK: - Persistenza Sessione
     @discardableResult
-    private func persistSession(projectId: UUID, start: Date, end: Date, duration: TimeInterval) -> Bool {
-        guard duration > 0, let modelContext else { return false }
+    private func persistSession(projectId: UUID, start: Date, end: Date, duration: TimeInterval) -> PersistSessionResult {
+        guard duration > 0 else { return .success }
+        guard let modelContext else { return .temporaryError }
         let descriptor = FetchDescriptor<KnittingProject>(
             predicate: #Predicate { $0.id == projectId }
         )
-        guard let project = try? modelContext.fetch(descriptor).first else {
-            timerLogger.error("Progetto \(projectId) non trovato durante il salvataggio della sessione timer")
-            return false
+        guard let projects = try? modelContext.fetch(descriptor) else {
+            timerLogger.warning("persistSession: fetch fallito temporaneamente per progetto \(projectId)")
+            return .temporaryError
+        }
+        guard let project = projects.first else {
+            timerLogger.warning("persistSession: progetto \(projectId) non più esistente in archivio, sessione scartata")
+            return .projectNotFound
         }
         
         let session = TimerSession(startDate: start, endDate: end, durationSeconds: duration)
@@ -157,7 +180,7 @@ final class TimerManager {
         project.updatedAt = clock.now
         do {
             try modelContext.save()
-            return true
+            return .success
         } catch {
             timerLogger.error("Errore salvataggio sessione timer in SwiftData: \(error.localizedDescription)")
             if let idx = project.timerSessions.firstIndex(where: { $0.id == session.id }) {
@@ -165,7 +188,7 @@ final class TimerManager {
             }
             project.totalSecondsWorked -= duration
             modelContext.delete(session)
-            return false
+            return .temporaryError
         }
     }
     
@@ -211,10 +234,15 @@ final class TimerManager {
         }
         
         if let projectId = activeProjectId, duration > 0 {
-            let saved = persistSession(projectId: projectId, start: start, end: endDate, duration: duration)
-            if !saved {
-                timerLogger.warning("pause: persistSession fallito per progetto \(projectId), conservata in coda pending")
+            let result = persistSession(projectId: projectId, start: start, end: endDate, duration: duration)
+            switch result {
+            case .success:
+                break
+            case .temporaryError:
+                timerLogger.warning("pause: persistSession fallito temporaneamente per progetto \(projectId), conservata in coda pending")
                 pendingSessions.append(PendingTimerSession(projectId: projectId, start: start, end: endDate, duration: duration))
+            case .projectNotFound:
+                timerLogger.warning("pause: progetto \(projectId) non più esistente in archivio, sessione scartata e non accodata")
             }
         }
         
@@ -249,13 +277,19 @@ final class TimerManager {
         let duration = max(0, now.timeIntervalSince(start))
         guard duration > 0 else { return 0 }
         
-        let saved = persistSession(projectId: projectId, start: start, end: now, duration: duration)
-        if saved {
+        let result = persistSession(projectId: projectId, start: start, end: now, duration: duration)
+        switch result {
+        case .success:
             sessionStartDate = now
             elapsedSecondsInCurrentSession = 0
             return duration
-        } else {
-            timerLogger.warning("flushElapsedToTotal: salvataggio fallito, sessionStartDate mantenuto per non perdere il tempo lavorato")
+        case .temporaryError:
+            timerLogger.warning("flushElapsedToTotal: salvataggio fallito temporaneamente, sessionStartDate mantenuto per non perdere il tempo lavorato")
+            return 0
+        case .projectNotFound:
+            timerLogger.warning("flushElapsedToTotal: progetto \(projectId) non più esistente in archivio, sessione azzerata")
+            sessionStartDate = nil
+            isRunning = false
             return 0
         }
     }
