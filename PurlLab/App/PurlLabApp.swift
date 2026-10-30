@@ -17,7 +17,183 @@ enum PurlLabSchemaV1: VersionedSchema {
             TimerSession.self
         ]
     }
+    
+    @Model
+    final class KnittingProject {
+        var id: UUID
+        var title: String
+        var designer: String
+        var selectedSize: String
+        var notes: String
+        @Attribute(.externalStorage) var pdfData: Data?
+        var createdAt: Date
+        var updatedAt: Date
+        var totalSecondsWorked: TimeInterval
+        var completedAt: Date?
+        
+        // Gauge (Campione su 10x10 cm)
+        var patternGaugeStitches: Double?
+        var patternGaugeRows: Double?
+        var userGaugeStitches: Double?
+        var userGaugeRows: Double?
+        var isGaugeRecalculated: Bool = false
+        var gaugeRecalculationSummary: String?
+        @Attribute(.externalStorage) var originalGuideJSON: Data? = nil
+        
+        @Relationship(deleteRule: .cascade) var counters: [RowCounter] = []
+        @Relationship(deleteRule: .cascade) var guideSteps: [GuideStep] = []
+        @Relationship(deleteRule: .cascade) var timerSessions: [TimerSession] = []
+        
+        init(
+            title: String,
+            designer: String = "",
+            selectedSize: String = "",
+            notes: String = "",
+            pdfData: Data? = nil
+        ) {
+            self.id = UUID()
+            self.title = title
+            self.designer = designer
+            self.selectedSize = selectedSize
+            self.notes = notes
+            self.pdfData = pdfData
+            self.createdAt = Date()
+            self.updatedAt = Date()
+            self.totalSecondsWorked = 0
+        }
+    }
+    
+    @Model
+    final class GuideStep {
+        var id: UUID
+        var sectionTitle: String
+        var title: String = ""
+        var stepType: String = "single_action"
+        var instructionText: String
+        var subSteps: [String] = []
+        var repeatVariations: [String] = []
+        var rowsPerRepeat: Int?
+        var totalRepeats: Int?
+        var stitchCountBefore: Int?
+        var stitchCountAfter: Int?
+        var targetMeasureCm: Double?
+        var sourcePage: Int?
+        var sourceQuote: String?
+        var isCompleted: Bool
+        var orderIndex: Int
+        var hasCounter: Bool = false
+        var counterLabel: String?
+        var counterKind: String? = nil
+        var currentStepCount: Int = 0
+        var targetStepCount: Int?
+        var extraCounterLabels: [String] = []
+        var extraCounterValues: [Int] = []
+        var completedAt: Date?
+        
+        var project: KnittingProject?
+        
+        init(
+            sectionTitle: String,
+            title: String = "",
+            stepType: String = "single_action",
+            instructionText: String,
+            subSteps: [String] = [],
+            repeatVariations: [String] = [],
+            rowsPerRepeat: Int? = nil,
+            totalRepeats: Int? = nil,
+            stitchCountBefore: Int? = nil,
+            stitchCountAfter: Int? = nil,
+            targetMeasureCm: Double? = nil,
+            sourcePage: Int? = nil,
+            sourceQuote: String? = nil,
+            isCompleted: Bool = false,
+            orderIndex: Int = 0,
+            hasCounter: Bool = false,
+            counterLabel: String? = nil,
+            counterKind: String? = nil,
+            currentStepCount: Int = 0,
+            targetStepCount: Int? = nil
+        ) {
+            self.id = UUID()
+            self.sectionTitle = sectionTitle
+            self.title = title
+            self.stepType = stepType
+            self.instructionText = instructionText
+            self.subSteps = subSteps
+            self.repeatVariations = repeatVariations
+            self.rowsPerRepeat = rowsPerRepeat
+            self.totalRepeats = totalRepeats
+            self.stitchCountBefore = stitchCountBefore
+            self.stitchCountAfter = stitchCountAfter
+            self.targetMeasureCm = targetMeasureCm
+            self.sourcePage = sourcePage
+            self.sourceQuote = sourceQuote
+            self.isCompleted = isCompleted
+            self.orderIndex = orderIndex
+            self.hasCounter = hasCounter
+            self.counterLabel = counterLabel
+            self.counterKind = counterKind
+            self.currentStepCount = currentStepCount
+            self.targetStepCount = targetStepCount
+        }
+    }
+    
+    @Model
+    final class RowCounter {
+        var id: UUID
+        var title: String
+        var currentCount: Int
+        var targetCount: Int?
+        var stepIncrement: Int
+        var resetOnTarget: Bool
+        var orderIndex: Int
+        
+        var project: KnittingProject?
+        
+        init(
+            title: String,
+            currentCount: Int = 0,
+            targetCount: Int? = nil,
+            stepIncrement: Int = 1,
+            resetOnTarget: Bool = false,
+            orderIndex: Int = 0
+        ) {
+            self.id = UUID()
+            self.title = title
+            self.currentCount = currentCount
+            self.targetCount = targetCount
+            self.stepIncrement = stepIncrement
+            self.resetOnTarget = resetOnTarget
+            self.orderIndex = orderIndex
+        }
+    }
+    
+    @Model
+    final class TimerSession {
+        var id: UUID
+        var startDate: Date
+        var endDate: Date?
+        var durationSeconds: TimeInterval
+        
+        var project: KnittingProject?
+        
+        init(
+            startDate: Date = Date(),
+            endDate: Date? = nil,
+            durationSeconds: TimeInterval = 0
+        ) {
+            self.id = UUID()
+            self.startDate = startDate
+            self.endDate = endDate
+            self.durationSeconds = durationSeconds
+        }
+    }
 }
+
+typealias KnittingProject = PurlLabSchemaV1.KnittingProject
+typealias GuideStep = PurlLabSchemaV1.GuideStep
+typealias RowCounter = PurlLabSchemaV1.RowCounter
+typealias TimerSession = PurlLabSchemaV1.TimerSession
 
 enum PurlLabMigrationPlan: SchemaMigrationPlan {
     static var schemas: [any VersionedSchema.Type] {

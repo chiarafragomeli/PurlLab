@@ -511,4 +511,24 @@ final class KnittingProjectTests: XCTestCase {
         
         XCTAssertEqual(reply["error"] as? String, "notReady")
     }
+    
+    func testDeviceStoreCompatibility() throws {
+        let storePath = "/tmp/purl_lab_test_store"
+        guard FileManager.default.fileExists(atPath: storePath) else { return }
+        
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+        
+        let destinationStore = tempDir.appendingPathComponent("PurlLabV4.store")
+        try FileManager.default.copyItem(at: URL(fileURLWithPath: storePath), to: destinationStore)
+        
+        let schema = Schema(versionedSchema: PurlLabSchemaV1.self)
+        let config = ModelConfiguration("PurlLabV4", schema: schema, url: destinationStore)
+        
+        let testContainer = try ModelContainer(for: schema, configurations: [config])
+        let fetchContext = testContainer.mainContext
+        let projects = try fetchContext.fetch(FetchDescriptor<KnittingProject>())
+        XCTAssertFalse(projects.isEmpty, "Lo store reale dell'iPhone deve caricare i progetti senza errori")
+    }
 }
