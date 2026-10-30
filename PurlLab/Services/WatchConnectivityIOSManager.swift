@@ -233,6 +233,7 @@ final class WatchConnectivityIOSManager: NSObject, WCSessionDelegate {
         projectId: String?,
         stepId: String?,
         newCount: Int?,
+        oldCount: Int? = nil,
         index: Int?,
         commandId: String? = nil,
         timestamp: TimeInterval? = nil
@@ -320,7 +321,8 @@ final class WatchConnectivityIOSManager: NSObject, WCSessionDelegate {
         
         let effectiveStepKey = stepId ?? currentStep?.id.uuidString ?? "project_\(project.id.uuidString)"
         if isCounterCommand, let cmdTimestamp = timestamp {
-            if isStaleCounterCommand(stepKey: effectiveStepKey, timestamp: cmdTimestamp) {
+            // Se oldCount è nil (vecchio formato comandi assoluti), verifica se è obsoleto
+            if oldCount == nil, isStaleCounterCommand(stepKey: effectiveStepKey, timestamp: cmdTimestamp) {
                 if let syncData = currentSyncData(for: allProjects) {
                     return ["syncData": syncData]
                 } else {
@@ -335,7 +337,14 @@ final class WatchConnectivityIOSManager: NSObject, WCSessionDelegate {
         switch command {
         case .incrementMainCounter:
             if let count = newCount {
-                let safeCount = min(max(0, count), 100_000)
+                let safeCount: Int
+                if let old = oldCount {
+                    let delta = count - old
+                    let currentVal = currentStep?.currentStepCount ?? (project.counters.first?.currentCount ?? 0)
+                    safeCount = min(max(0, currentVal + delta), 100_000)
+                } else {
+                    safeCount = min(max(0, count), 100_000)
+                }
                 if let step = currentStep {
                     step.currentStepCount = safeCount
                 } else if let globalCounter = project.counters.first {
@@ -361,7 +370,14 @@ final class WatchConnectivityIOSManager: NSObject, WCSessionDelegate {
             
         case .decrementMainCounter:
             if let count = newCount {
-                let safeCount = min(max(0, count), 100_000)
+                let safeCount: Int
+                if let old = oldCount {
+                    let delta = count - old
+                    let currentVal = currentStep?.currentStepCount ?? (project.counters.first?.currentCount ?? 0)
+                    safeCount = min(max(0, currentVal + delta), 100_000)
+                } else {
+                    safeCount = min(max(0, count), 100_000)
+                }
                 if let step = currentStep {
                     step.currentStepCount = safeCount
                 } else if let globalCounter = project.counters.first {
@@ -386,7 +402,14 @@ final class WatchConnectivityIOSManager: NSObject, WCSessionDelegate {
             
         case .setMainCounter:
             if let count = newCount {
-                let safeCount = min(max(0, count), 100_000)
+                let safeCount: Int
+                if let old = oldCount {
+                    let delta = count - old
+                    let currentVal = currentStep?.currentStepCount ?? (project.counters.first?.currentCount ?? 0)
+                    safeCount = min(max(0, currentVal + delta), 100_000)
+                } else {
+                    safeCount = min(max(0, count), 100_000)
+                }
                 if let step = currentStep {
                     step.currentStepCount = safeCount
                 } else if let globalCounter = project.counters.first {
@@ -545,12 +568,13 @@ final class WatchConnectivityIOSManager: NSObject, WCSessionDelegate {
         let projectId = message["projectId"] as? String
         let stepId = message["stepId"] as? String
         let newCount = message["newCount"] as? Int
+        let oldCount = message["oldCount"] as? Int
         let index = message["index"] as? Int
         let timestamp = message["timestamp"] as? TimeInterval
         nonisolated(unsafe) let safeReplyHandler = replyHandler
         
         Task { @MainActor in
-            let reply = self.handleIncomingCommand(commandRaw: commandRaw, projectId: projectId, stepId: stepId, newCount: newCount, index: index, commandId: commandId, timestamp: timestamp)
+            let reply = self.handleIncomingCommand(commandRaw: commandRaw, projectId: projectId, stepId: stepId, newCount: newCount, oldCount: oldCount, index: index, commandId: commandId, timestamp: timestamp)
             safeReplyHandler(reply)
         }
     }
@@ -561,11 +585,12 @@ final class WatchConnectivityIOSManager: NSObject, WCSessionDelegate {
         let projectId = userInfo["projectId"] as? String
         let stepId = userInfo["stepId"] as? String
         let newCount = userInfo["newCount"] as? Int
+        let oldCount = userInfo["oldCount"] as? Int
         let index = userInfo["index"] as? Int
         let timestamp = userInfo["timestamp"] as? TimeInterval
         
         Task { @MainActor in
-            _ = self.handleIncomingCommand(commandRaw: commandRaw, projectId: projectId, stepId: stepId, newCount: newCount, index: index, commandId: commandId, timestamp: timestamp)
+            _ = self.handleIncomingCommand(commandRaw: commandRaw, projectId: projectId, stepId: stepId, newCount: newCount, oldCount: oldCount, index: index, commandId: commandId, timestamp: timestamp)
         }
     }
 }

@@ -7,6 +7,7 @@ struct WatchCounterView: View {
     @State private var showingProjectList = false
     @State private var crownDebounceTask: Task<Void, Never>? = nil
     @State private var isCrownDebouncing = false
+    @State private var crownStartCount: Int? = nil
     
     private var project: WatchProjectSummary? {
         watchManager.activeProject
@@ -39,7 +40,9 @@ struct WatchCounterView: View {
                     watchManager.requestSyncFromPhone()
                 }
                 .onChange(of: project.currentCount) { _, newCount in
-                    crownValue = Double(newCount)
+                    if !isCrownDebouncing {
+                        crownValue = Double(newCount)
+                    }
                 }
             } else {
                 emptyStateView
@@ -181,19 +184,22 @@ struct WatchCounterView: View {
             let intVal = max(0, Int(newValue))
             if intVal != project.currentCount {
                 // Aggiornamento locale immediato per zero latenza visiva (Patch 2d)
-                watchManager.updateMainCounterLocally(to: intVal)
                 if !isCrownDebouncing {
                     isCrownDebouncing = true
+                    crownStartCount = project.currentCount
                     watchManager.beginCrownDebounce()
                 }
+                watchManager.updateMainCounterLocally(to: intVal)
                 crownDebounceTask?.cancel()
                 crownDebounceTask = Task {
                     try? await Task.sleep(nanoseconds: 250_000_000)
                     guard !Task.isCancelled else { return }
                     isCrownDebouncing = false
                     watchManager.endCrownDebounce()
-                    // Trasmette a iPhone solo a rotazione ultimata
-                    watchManager.sendSetMainCounterCommand(to: intVal)
+                    let startCount = crownStartCount ?? project.currentCount
+                    crownStartCount = nil
+                    // Trasmette a iPhone solo a rotazione ultimata con oldCount per calcolo delta
+                    watchManager.sendSetMainCounterCommand(to: intVal, oldCount: startCount)
                 }
             }
         }
@@ -201,6 +207,7 @@ struct WatchCounterView: View {
             if isCrownDebouncing {
                 isCrownDebouncing = false
                 crownDebounceTask?.cancel()
+                crownStartCount = nil
                 watchManager.endCrownDebounce()
             }
         }

@@ -1,4 +1,5 @@
 import XCTest
+import SwiftData
 @testable import PurlLab
 
 final class WatchModelsTests: XCTestCase {
@@ -307,6 +308,92 @@ final class WatchModelsTests: XCTestCase {
         
         // Ripristina timeout di default a 8s e cancella comandi pendenti
         coordinator.resetForTesting()
+    }
+    
+    @MainActor
+    func testLostUpdateCounterDeltaHandling() {
+        let testClock = TestClock()
+        let fakeTransport = FakeWatchTransport()
+        let coordinator = WatchCommandCoordinator(transport: fakeTransport, clock: testClock)
+        
+        let schema = Schema([KnittingProject.self, GuideStep.self, RowCounter.self, TimerSession.self])
+        let config = ModelConfiguration(isStoredInMemoryOnly: true)
+        let container = try! ModelContainer(for: schema, configurations: [config])
+        let context = container.mainContext
+        
+        let project = KnittingProject(title: "Delta Test")
+        let step = GuideStep(sectionTitle: "Sezione", instructionText: "Lavora", orderIndex: 0, hasCounter: true, currentStepCount: 6, targetStepCount: 50)
+        project.guideSteps.append(step)
+        context.insert(project)
+        try! context.save()
+        
+        let manager = WatchConnectivityIOSManager.shared
+        manager.configure(with: context)
+        manager.setActiveProject(project)
+        manager.setActiveStep(step, for: project)
+        
+        // (a) Watch genera comando incremento quando vedeva 6 (oldCount: 6, newCount: 7)
+        // Viene accodato tramite fallback (es. trasporto offline o timeout)
+        fakeTransport.isReachable = false
+        coordinator.sendCommand(
+            .incrementMainCounter,
+            projectId: project.id.uuidString,
+            data: ["newCount": 7, "oldCount": 6, "stepId": step.id.uuidString]
+        )
+        
+        XCTAssertEqual(fakeTransport.transferredUserInfos.count, 1)
+        let queuedMessage = fakeTransport.transferredUserInfos[0]
+        let cmdId = queuedMessage["commandId"] as! String
+        
+        // Nel frattempo l'iPhone passa da 6 a 20
+        step.currentStepCount = 20
+        try! context.save()
+        
+        // Il comando in coda viene consegnato a iPhone
+        _ = manager.handleIncomingCommand(
+            commandRaw: queuedMessage["command"] as? String,
+            projectId: queuedMessage["projectId"] as? String,
+            stepId: queuedMessage["stepId"] as? String,
+            newCount: queuedMessage["newCount"] as? Int,
+            oldCount: queuedMessage["oldCount"] as? Int,
+            index: queuedMessage["index"] as? Int,
+            commandId: cmdId,
+            timestamp: queuedMessage["timestamp"] as? TimeInterval
+        )
+        
+        // Risultato deve essere 21 (20 + (7 - 6)), NON 6 o 7
+        XCTAssertEqual(step.currentStepCount, 21, "Il comando in coda consegnato dopo che l'iPhone è passato da 6 a 20 deve risultare in 21")
+        
+        // (b) Stesso comando consegnato due volte -> applicato una sola volta
+        _ = manager.handleIncomingCommand(
+            commandRaw: queuedMessage["command"] as? String,
+            projectId: queuedMessage["projectId"] as? String,
+            stepId: queuedMessage["stepId"] as? String,
+            newCount: queuedMessage["newCount"] as? Int,
+            oldCount: queuedMessage["oldCount"] as? Int,
+            index: queuedMessage["index"] as? Int,
+            commandId: cmdId,
+            timestamp: queuedMessage["timestamp"] as? TimeInterval
+        )
+        XCTAssertEqual(step.currentStepCount, 21, "Il comando ripetuto con lo stesso commandId deve essere applicato una sola volta")
+        
+        // (c) Corona 3->8 in ritardo con iPhone a 20 -> 25
+        step.currentStepCount = 20
+        try! context.save()
+        
+        let crownCmdId = UUID().uuidString
+        _ = manager.handleIncomingCommand(
+            commandRaw: WatchCommandType.setMainCounter.rawValue,
+            projectId: project.id.uuidString,
+            stepId: step.id.uuidString,
+            newCount: 8,
+            oldCount: 3,
+            index: nil,
+            commandId: crownCmdId,
+            timestamp: testClock.now.timeIntervalSince1970
+        )
+        // 20 + (8 - 3) = 25
+        XCTAssertEqual(step.currentStepCount, 25, "Rotazione corona 3->8 in ritardo con iPhone a 20 deve produrre 25")
     }
 }
 

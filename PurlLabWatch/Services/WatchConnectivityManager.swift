@@ -81,6 +81,7 @@ final class WatchConnectivityManager: NSObject, WCSessionDelegate {
     /// Incrementa il contatore della sezione (+1) con risposta aptica istantanea
     func incrementMainCounter() {
         guard var current = activeProject else { return }
+        let oldCount = current.currentCount
         current.currentCount += 1
         current.totalRowsWorked += 1
         if let sts = current.currentStitches, sts > 0 {
@@ -95,7 +96,10 @@ final class WatchConnectivityManager: NSObject, WCSessionDelegate {
             playHaptic(.click)
         }
         
-        var payload: [String: Any] = ["newCount": current.currentCount]
+        var payload: [String: Any] = [
+            "newCount": current.currentCount,
+            "oldCount": oldCount
+        ]
         if let stepId = current.activeStepId {
             payload["stepId"] = stepId
         }
@@ -106,12 +110,16 @@ final class WatchConnectivityManager: NSObject, WCSessionDelegate {
     /// Decrementa il contatore della sezione (-1)
     func decrementMainCounter() {
         guard var current = activeProject, current.currentCount > 0 else { return }
+        let oldCount = current.currentCount
         current.currentCount -= 1
         if current.totalRowsWorked > 0 { current.totalRowsWorked -= 1 }
         updateProjectLocally(current)
         playHaptic(.directionDown)
         
-        var payload: [String: Any] = ["newCount": current.currentCount]
+        var payload: [String: Any] = [
+            "newCount": current.currentCount,
+            "oldCount": oldCount
+        ]
         if let stepId = current.activeStepId {
             payload["stepId"] = stepId
         }
@@ -126,24 +134,32 @@ final class WatchConnectivityManager: NSObject, WCSessionDelegate {
         updateProjectLocally(current)
     }
     
-    /// Invia il comando di impostazione contatore assoluto a iPhone
-    func sendSetMainCounterCommand(to value: Int) {
+    /// Invia il comando di impostazione contatore (con oldCount per applicazione delta) a iPhone
+    func sendSetMainCounterCommand(to value: Int, oldCount: Int? = nil) {
         guard let current = activeProject, value >= 0 else { return }
-        var payload: [String: Any] = ["newCount": value]
+        let effectiveOldCount = oldCount ?? current.currentCount
+        var payload: [String: Any] = [
+            "newCount": value,
+            "oldCount": effectiveOldCount
+        ]
         if let stepId = current.activeStepId {
             payload["stepId"] = stepId
         }
         sendCommand(.setMainCounter, projectId: current.id, data: payload)
     }
     
-    /// Imposta direttamente un valore (es. tramite Digital Crown o input manuale)
+    /// Imposta direttamente un valore (es. tramite input manuale)
     func setMainCounter(to value: Int) {
         guard var current = activeProject, value >= 0, current.currentCount != value else { return }
+        let oldCount = current.currentCount
         current.currentCount = value
         updateProjectLocally(current)
         playHaptic(.click)
         
-        var payload: [String: Any] = ["newCount": value]
+        var payload: [String: Any] = [
+            "newCount": value,
+            "oldCount": oldCount
+        ]
         if let stepId = current.activeStepId {
             payload["stepId"] = stepId
         }
