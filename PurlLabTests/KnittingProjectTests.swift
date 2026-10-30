@@ -514,7 +514,9 @@ final class KnittingProjectTests: XCTestCase {
     
     func testDeviceStoreCompatibility() throws {
         let storePath = "/tmp/purl_lab_test_store"
-        guard FileManager.default.fileExists(atPath: storePath) else { return }
+        guard FileManager.default.fileExists(atPath: storePath) else {
+            throw XCTSkip("Store reale non trovato in \(storePath). Per ricrearlo da dispositivo collegato eseguire: xcrun devicectl device copy from --device <DEVICE_UUID> --domain-type appDataContainer --domain-identifier com.chiara.PurlLab --source Library/Application\\ Support/PurlLabV4.store --destination /tmp/purl_lab_test_store")
+        }
         
         let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
