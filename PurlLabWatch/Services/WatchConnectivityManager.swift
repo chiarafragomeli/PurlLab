@@ -261,7 +261,9 @@ final class WatchConnectivityManager: NSObject, WCSessionDelegate {
                 if self.activeInFlightCommandIds.remove(commandId) != nil {
                     self.inFlightTimeoutTasks.removeValue(forKey: commandId)
                     self.inFlightCommandsCount = max(0, self.inFlightCommandsCount - 1)
-                    // Scadenza di 8 secondi: decrementa il contatore e riallinea con requestFullSync
+                    // Allo scadere degli 8s chiama transferUserInfoFallback(message) per il comando originale PRIMA di requestFullSync
+                    transport.transferUserInfoFallback(message)
+                    // Scadenza di 8 secondi: riallinea con requestFullSync
                     if command != .requestFullSync {
                         self.requestFullSync()
                     }

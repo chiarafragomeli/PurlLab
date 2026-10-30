@@ -445,14 +445,20 @@ final class WatchModelsTests: XCTestCase {
         // Subito dopo l'invio, il comando è in volo
         XCTAssertEqual(watchManager.inFlightCommandsCount, 1)
         XCTAssertEqual(fakeTransport.sentMessages.count, 1)
+        let originalCommandId = fakeTransport.sentMessages.first?["commandId"] as? String
+        XCTAssertNotNil(originalCommandId)
         XCTAssertEqual(fakeTransport.sentMessages.first?["command"] as? String, WatchCommandType.incrementMainCounter.rawValue)
         
         // Attendi che scada il timeout (60ms > 30ms)
         try await Task.sleep(nanoseconds: 60_000_000)
         
         // Allo scadere:
-        // 1. inFlightCommandsCount deve essere decrementato (e con il nuovo sendCommand di fullSync, se fakeTransport non risponde, fullSync va in volo oppure è scattato requestFullSync)
-        // Verifichiamo che è stato inviato il comando di requestFullSync:
+        // 1. Il comando originale deve risultare reinviato via fallback (transferUserInfoFallback) con lo stesso commandId
+        XCTAssertEqual(fakeTransport.transferredUserInfos.count, 1)
+        XCTAssertEqual(fakeTransport.transferredUserInfos.first?["commandId"] as? String, originalCommandId)
+        XCTAssertEqual(fakeTransport.transferredUserInfos.first?["command"] as? String, WatchCommandType.incrementMainCounter.rawValue)
+        
+        // 2. Viene poi inviato requestFullSync per riallineare lo stato
         XCTAssertGreaterThanOrEqual(fakeTransport.sentMessages.count, 2)
         XCTAssertEqual(fakeTransport.sentMessages.last?["command"] as? String, WatchCommandType.requestFullSync.rawValue)
         
