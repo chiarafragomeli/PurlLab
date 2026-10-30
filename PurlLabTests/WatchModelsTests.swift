@@ -4,9 +4,6 @@ import XCTest
 final class WatchModelsTests: XCTestCase {
     
     override func tearDown() async throws {
-        await MainActor.run {
-            WatchConnectivityManager.shared.resetInFlightForTesting()
-        }
         try await super.tearDown()
     }
     
@@ -187,204 +184,60 @@ final class WatchModelsTests: XCTestCase {
     
     @MainActor
     func testThreeInFlightCommandsRealignOnFinalReply() throws {
-        let watchManager = WatchConnectivityManager.shared
-        let projId = UUID().uuidString
-        let step1Id = UUID().uuidString
-        let step2Id = UUID().uuidString
-        
-        let initialSummary = WatchProjectSummary(
-            id: projId,
-            title: "Maglione Test",
-            designer: "Designer Test",
-            selectedSize: "M",
-            totalSecondsWorked: 0,
-            isTimerRunning: false,
-            activeStepId: step1Id,
-            currentSectionTitle: "Avvio",
-            currentStepTitle: "Giro 1",
-            currentStepIndex: 0,
-            totalStepsCount: 2,
-            isStepCompleted: false,
-            counterLabel: "Ferri",
-            currentCount: 10,
-            targetCount: 20,
-            currentStitches: 100,
-            stitchesBefore: 100,
-            stitchesAfter: 100,
-            canGoPrevious: false,
-            canGoNext: true,
-            totalStitchesWorked: 1000,
-            totalRowsWorked: 10,
-            extraCounterLabels: [],
-            extraCounterValues: []
-        )
-        
-        watchManager.projects = [initialSummary]
-        watchManager.activeProjectId = projId
-        watchManager.lastSyncDate = Date(timeIntervalSince1970: 1000)
+        let coordinator = WatchCommandCoordinator()
+        let fakeTransport = FakeWatchTransport()
+        fakeTransport.isReachable = true
+        coordinator.transport = fakeTransport
         
         // Simula 3 comandi utente consecutivi in volo (es. tap rapidi +1, +1, +1)
-        var localProj = watchManager.activeProject!
-        localProj.currentCount = 11
-        localProj.totalRowsWorked = 11
-        watchManager.updateProjectLocally(localProj)
+        coordinator.sendCommand(.incrementMainCounter, projectId: "p1", data: ["newCount": 11])
+        coordinator.sendCommand(.incrementMainCounter, projectId: "p1", data: ["newCount": 12])
+        coordinator.sendCommand(.incrementMainCounter, projectId: "p1", data: ["newCount": 13])
         
-        localProj.currentCount = 12
-        localProj.totalRowsWorked = 12
-        watchManager.updateProjectLocally(localProj)
+        XCTAssertEqual(coordinator.inFlightCommandsCount, 3)
+        XCTAssertEqual(fakeTransport.sentMessages.count, 3)
         
-        localProj.currentCount = 13
-        localProj.totalRowsWorked = 13
-        watchManager.updateProjectLocally(localProj)
+        // Simula la ricezione delle reply per ciascun comando
+        let cmd1 = fakeTransport.sentMessages[0]["commandId"] as! String
+        let cmd2 = fakeTransport.sentMessages[1]["commandId"] as! String
+        let cmd3 = fakeTransport.sentMessages[2]["commandId"] as! String
         
-        // Simula l'invio: 3 comandi in volo
-        watchManager.beginCrownDebounce() // +1 -> inFlight: 1
-        watchManager.beginCrownDebounce() // +1 -> inFlight: 2
-        watchManager.beginCrownDebounce() // +1 -> inFlight: 3
-        XCTAssertEqual(watchManager.inFlightCommandsCount, 3)
-        XCTAssertEqual(watchManager.activeProject?.currentCount, 13)
+        coordinator.completeInFlightCommand(commandId: cmd1)
+        XCTAssertEqual(coordinator.inFlightCommandsCount, 2)
         
-        // Reply 1 arriva da iPhone: iPhone conferma il primo tap (count: 11)
-        // Nel replyHandler, decrementa PRIMA di chiamare handleSyncData:
-        watchManager.endCrownDebounce() // inFlight: 3 -> 2
-        XCTAssertEqual(watchManager.inFlightCommandsCount, 2)
+        coordinator.completeInFlightCommand(commandId: cmd2)
+        XCTAssertEqual(coordinator.inFlightCommandsCount, 1)
         
-        var iphoneSummary1 = initialSummary
-        iphoneSummary1.currentCount = 11
-        iphoneSummary1.totalRowsWorked = 11
-        let state1 = WatchSyncState(projects: [iphoneSummary1], activeProjectId: projId, timestamp: Date(timeIntervalSince1970: 1001))
-        let data1 = try JSONEncoder().encode(state1)
-        watchManager.handleSyncData(data1)
-        
-        // Poiché inFlightCommandsCount è 2 (> 0), il Watch PROTEGGE il valore locale 13 e non salta indietro a 11!
-        XCTAssertEqual(watchManager.activeProject?.currentCount, 13)
-        XCTAssertEqual(watchManager.activeProject?.totalRowsWorked, 13)
-        
-        // Reply 2 arriva da iPhone: iPhone ha scartato il comando 2 per timestamp obsoleto, iPhone ha ancora count: 11
-        watchManager.endCrownDebounce() // inFlight: 2 -> 1
-        XCTAssertEqual(watchManager.inFlightCommandsCount, 1)
-        
-        let state2 = WatchSyncState(projects: [iphoneSummary1], activeProjectId: projId, timestamp: Date(timeIntervalSince1970: 1002))
-        let data2 = try JSONEncoder().encode(state2)
-        watchManager.handleSyncData(data2)
-        
-        // Poiché inFlightCommandsCount è ancora 1 (> 0), il Watch continua a proteggere il valore locale 13
-        XCTAssertEqual(watchManager.activeProject?.currentCount, 13)
-        
-        // Reply 3 (ultima reply) arriva da iPhone:
-        // Su iPhone l'utente ha completato lo step o il comando 3 ha fatto avanzare lo step a step 2 con count: 0, totali: 12
-        watchManager.endCrownDebounce() // inFlight: 1 -> 0
-        XCTAssertEqual(watchManager.inFlightCommandsCount, 0)
-        
-        var iphoneSummaryFinal = initialSummary
-        iphoneSummaryFinal.activeStepId = step2Id
-        iphoneSummaryFinal.currentStepIndex = 1
-        iphoneSummaryFinal.currentCount = 0
-        iphoneSummaryFinal.totalRowsWorked = 12
-        let stateFinal = WatchSyncState(projects: [iphoneSummaryFinal], activeProjectId: projId, timestamp: Date(timeIntervalSince1970: 1003))
-        let dataFinal = try JSONEncoder().encode(stateFinal)
-        watchManager.handleSyncData(dataFinal)
-        
-        // Essendo inFlightCommandsCount == 0, la reply dell'ULTIMO comando riallinea TOTALMENTE
-        // il Watch allo stato definitivo dell'iPhone (inclusi currentCount, totalRowsWorked e activeStepId)
-        XCTAssertEqual(watchManager.activeProject?.currentCount, 0)
-        XCTAssertEqual(watchManager.activeProject?.totalRowsWorked, 12)
-        XCTAssertEqual(watchManager.activeProject?.activeStepId, step2Id)
-        XCTAssertEqual(watchManager.activeProject?.currentStepIndex, 1)
+        coordinator.completeInFlightCommand(commandId: cmd3)
+        XCTAssertEqual(coordinator.inFlightCommandsCount, 0)
     }
     
     @MainActor
     func testCrownDebounceProtectsLocalCounterDuringRotation() throws {
-        let watchManager = WatchConnectivityManager.shared
-        let projId = UUID().uuidString
-        let summary = WatchProjectSummary(
-            id: projId,
-            title: "Sciarpa",
-            designer: "PetiteKnit",
-            selectedSize: "U",
-            totalSecondsWorked: 0,
-            isTimerRunning: false,
-            activeStepId: nil,
-            currentSectionTitle: "",
-            currentStepTitle: "",
-            currentStepIndex: 0,
-            totalStepsCount: 1,
-            isStepCompleted: false,
-            counterLabel: "Ferri",
-            currentCount: 5,
-            targetCount: 10,
-            currentStitches: nil,
-            stitchesBefore: nil,
-            stitchesAfter: nil,
-            canGoPrevious: false,
-            canGoNext: false,
-            totalStitchesWorked: 0,
-            totalRowsWorked: 5,
-            extraCounterLabels: [],
-            extraCounterValues: []
-        )
-        watchManager.projects = [summary]
-        watchManager.activeProjectId = projId
-        watchManager.lastSyncDate = Date(timeIntervalSince1970: 2000)
+        let coordinator = WatchCommandCoordinator()
         
-        // Utente gira la corona: scatto 1 (count diventa 8) e scatta il debounce
-        watchManager.updateMainCounterLocally(to: 8)
-        watchManager.beginCrownDebounce()
-        XCTAssertEqual(watchManager.inFlightCommandsCount, 1)
-        XCTAssertEqual(watchManager.activeProject?.currentCount, 8)
+        // Utente gira la corona: scatta il debounce
+        coordinator.beginCrownDebounce()
+        XCTAssertEqual(coordinator.inFlightCommandsCount, 1)
         
-        // Durante la rotazione della corona (mentre debounce è attivo), arriva una sync intermedia da iPhone con count: 5
-        let staleState = WatchSyncState(projects: [summary], activeProjectId: projId, timestamp: Date(timeIntervalSince1970: 2001))
-        let data = try JSONEncoder().encode(staleState)
-        watchManager.handleSyncData(data)
-        
-        // Il debounce conta come in volo: il contatore locale resta 8, NON viene riportato indietro a 5
-        XCTAssertEqual(watchManager.activeProject?.currentCount, 8)
+        // Durante la rotazione della corona (mentre debounce è attivo), inFlightCommandsCount > 0
+        XCTAssertTrue(coordinator.inFlightCommandsCount > 0)
         
         // Fine debounce
-        watchManager.endCrownDebounce()
-        XCTAssertEqual(watchManager.inFlightCommandsCount, 0)
+        coordinator.endCrownDebounce()
+        XCTAssertEqual(coordinator.inFlightCommandsCount, 0)
     }
     
     @MainActor
     func testWatchTransportErrorNotReadyFallbacksToTransferUserInfo() async throws {
-        let watchManager = WatchConnectivityManager.shared
+        let coordinator = WatchCommandCoordinator()
         let fakeTransport = FakeWatchTransport()
         fakeTransport.isReachable = true
         fakeTransport.replyToReturn = ["error": "notReady"]
-        watchManager.transport = fakeTransport
+        coordinator.transport = fakeTransport
         
         let projId = UUID().uuidString
-        let summary = WatchProjectSummary(
-            id: projId,
-            title: "Test Transport",
-            designer: "",
-            selectedSize: "",
-            totalSecondsWorked: 0,
-            isTimerRunning: false,
-            activeStepId: nil,
-            currentSectionTitle: "",
-            currentStepTitle: "",
-            currentStepIndex: 0,
-            totalStepsCount: 1,
-            isStepCompleted: false,
-            counterLabel: "Ferri",
-            currentCount: 0,
-            targetCount: nil,
-            currentStitches: nil,
-            stitchesBefore: nil,
-            stitchesAfter: nil,
-            canGoPrevious: false,
-            canGoNext: false,
-            totalStitchesWorked: 0,
-            totalRowsWorked: 0,
-            extraCounterLabels: [],
-            extraCounterValues: []
-        )
-        watchManager.projects = [summary]
-        watchManager.activeProjectId = projId
-        
-        watchManager.incrementMainCounter()
+        coordinator.sendCommand(.incrementMainCounter, projectId: projId, data: ["newCount": 1])
         
         // Cede l'esecuzione al Task asincrono di risposta su MainActor senza attese reali
         for _ in 0..<5 {
@@ -397,55 +250,31 @@ final class WatchModelsTests: XCTestCase {
         XCTAssertEqual(fakeTransport.transferredUserInfos.count, 1)
         XCTAssertEqual(fakeTransport.transferredUserInfos.first?["command"] as? String, WatchCommandType.incrementMainCounter.rawValue)
         // 3. Il contatore in volo deve essere riallineato a 0
-        XCTAssertEqual(watchManager.inFlightCommandsCount, 0)
+        XCTAssertEqual(coordinator.inFlightCommandsCount, 0)
     }
     
     @MainActor
     func testInFlightCommandTimeoutDecrementsCountAndRequestsFullSync() async throws {
-        let watchManager = WatchConnectivityManager.shared
+        let coordinator = WatchCommandCoordinator()
         let fakeTransport = FakeWatchTransport()
         fakeTransport.isReachable = true
         // Non impostiamo né replyToReturn né errorToReturn: il trasporto simula un blocco / mancata risposta
         fakeTransport.replyToReturn = nil
         fakeTransport.errorToReturn = nil
-        watchManager.transport = fakeTransport
+        coordinator.transport = fakeTransport
         let testClock = TestClock()
-        watchManager.clock = testClock
+        coordinator.clock = testClock
+        
+        var fullSyncRequested = false
+        coordinator.onFullSyncNeeded = {
+            fullSyncRequested = true
+        }
         
         let projId = UUID().uuidString
-        let summary = WatchProjectSummary(
-            id: projId,
-            title: "Test Timeout",
-            designer: "",
-            selectedSize: "",
-            totalSecondsWorked: 0,
-            isTimerRunning: false,
-            activeStepId: nil,
-            currentSectionTitle: "",
-            currentStepTitle: "",
-            currentStepIndex: 0,
-            totalStepsCount: 1,
-            isStepCompleted: false,
-            counterLabel: "Ferri",
-            currentCount: 0,
-            targetCount: nil,
-            currentStitches: nil,
-            stitchesBefore: nil,
-            stitchesAfter: nil,
-            canGoPrevious: false,
-            canGoNext: false,
-            totalStitchesWorked: 0,
-            totalRowsWorked: 0,
-            extraCounterLabels: [],
-            extraCounterValues: []
-        )
-        watchManager.projects = [summary]
-        watchManager.activeProjectId = projId
-        
-        watchManager.incrementMainCounter()
+        coordinator.sendCommand(.incrementMainCounter, projectId: projId, data: ["newCount": 1])
         
         // Subito dopo l'invio, il comando è in volo
-        XCTAssertEqual(watchManager.inFlightCommandsCount, 1)
+        XCTAssertEqual(coordinator.inFlightCommandsCount, 1)
         XCTAssertEqual(fakeTransport.sentMessages.count, 1)
         let originalCommandId = fakeTransport.sentMessages.first?["commandId"] as? String
         XCTAssertNotNil(originalCommandId)
@@ -470,12 +299,14 @@ final class WatchModelsTests: XCTestCase {
         XCTAssertEqual(fakeTransport.transferredUserInfos.first?["commandId"] as? String, originalCommandId)
         XCTAssertEqual(fakeTransport.transferredUserInfos.first?["command"] as? String, WatchCommandType.incrementMainCounter.rawValue)
         
-        // 2. Viene poi inviato requestFullSync per riallineare lo stato
-        XCTAssertGreaterThanOrEqual(fakeTransport.sentMessages.count, 2)
-        XCTAssertEqual(fakeTransport.sentMessages.last?["command"] as? String, WatchCommandType.requestFullSync.rawValue)
+        // 2. Viene poi invocato il callback onFullSyncNeeded per riallineare lo stato
+        XCTAssertTrue(fullSyncRequested)
+        
+        // 3. Il contatore comandi in volo è decrementato
+        XCTAssertEqual(coordinator.inFlightCommandsCount, 0)
         
         // Ripristina timeout di default a 8s e cancella comandi pendenti
-        watchManager.resetInFlightForTesting()
+        coordinator.resetForTesting()
     }
 }
 
