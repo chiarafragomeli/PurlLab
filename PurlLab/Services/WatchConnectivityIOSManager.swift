@@ -20,8 +20,11 @@ final class WatchConnectivityIOSManager: NSObject, WCSessionDelegate {
     public private(set) var activeProjectId: UUID?
     private var activeStepIdsByProject: [UUID: UUID] = [:]
     
-    // Deduplicazione comandi Watch tramite cache LRU (CRIT-02)
+    // Deduplicazione comandi Watch tramite cache persistente in UserDefaults (CRIT-02)
+    private let userDefaults: UserDefaults
+    private let userDefaultsKey = "purl_lab_processed_command_ids"
     private var processedCommandIds: [String] = []
+    private var processedCommandIdsSet: Set<String> = []
     private let maxProcessedCommands = 200
     
     // Mappa stepId -> ultimo timestamp per ordinamento temporale comandi contatore (Patch 2a)
@@ -31,15 +34,29 @@ final class WatchConnectivityIOSManager: NSObject, WCSessionDelegate {
     private var appContextDebounceTask: Task<Void, Never>?
     private var pendingSyncDataForAppContext: Data?
     
+    func hasProcessedCommand(_ commandId: String?) -> Bool {
+        guard let commandId = commandId, !commandId.isEmpty else { return false }
+        return processedCommandIdsSet.contains(commandId)
+    }
+    
     func isDuplicateCommand(_ commandId: String?) -> Bool {
         guard let commandId = commandId, !commandId.isEmpty else { return false }
-        if processedCommandIds.contains(commandId) {
+        if processedCommandIdsSet.contains(commandId) {
             return true
         }
         processedCommandIds.append(commandId)
+        processedCommandIdsSet.insert(commandId)
         if processedCommandIds.count > maxProcessedCommands {
-            processedCommandIds.removeFirst(processedCommandIds.count - maxProcessedCommands)
+            let overflow = processedCommandIds.count - maxProcessedCommands
+            let removed = Array(processedCommandIds.prefix(overflow))
+            processedCommandIds.removeFirst(overflow)
+            for id in removed {
+                if !processedCommandIds.contains(id) {
+                    processedCommandIdsSet.remove(id)
+                }
+            }
         }
+        userDefaults.set(processedCommandIds, forKey: userDefaultsKey)
         return false
     }
     
@@ -91,9 +108,16 @@ final class WatchConnectivityIOSManager: NSObject, WCSessionDelegate {
         }
     }
     
-    override private init() {
+    init(userDefaults: UserDefaults = .standard, setupSession: Bool = true) {
+        self.userDefaults = userDefaults
+        let saved = userDefaults.stringArray(forKey: userDefaultsKey) ?? []
+        let trimmed = Array(saved.suffix(maxProcessedCommands))
+        self.processedCommandIds = trimmed
+        self.processedCommandIdsSet = Set(trimmed)
         super.init()
-        setupWCSession()
+        if setupSession {
+            setupWCSession()
+        }
     }
     
     // MARK: - Inizializzazione & Selezione Attiva

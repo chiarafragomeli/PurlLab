@@ -164,6 +164,58 @@ final class WatchModelsTests: XCTestCase {
     }
     
     @MainActor
+    func testPersistentCommandDeduplicationAcrossManagerRecreation() {
+        let suiteName = "test_dedup_\(UUID().uuidString)"
+        let testDefaults = UserDefaults(suiteName: suiteName)!
+        defer {
+            testDefaults.removePersistentDomain(forName: suiteName)
+        }
+        
+        let manager1 = WatchConnectivityIOSManager(userDefaults: testDefaults, setupSession: false)
+        let commandId = UUID().uuidString
+        
+        // Primo arrivo con il primo manager: non deve essere duplicato
+        XCTAssertFalse(manager1.isDuplicateCommand(commandId))
+        // Stesso manager, stesso commandId: duplicato
+        XCTAssertTrue(manager1.isDuplicateCommand(commandId))
+        
+        // Simula riavvio dell'app ricreando un nuovo manager con le stesse UserDefaults
+        let manager2 = WatchConnectivityIOSManager(userDefaults: testDefaults, setupSession: false)
+        // Il comando elaborato prima del riavvio deve risultare duplicato
+        XCTAssertTrue(manager2.isDuplicateCommand(commandId))
+        
+        // Un nuovo comando mai visto prima non deve essere duplicato
+        let newCommandId = UUID().uuidString
+        XCTAssertFalse(manager2.isDuplicateCommand(newCommandId))
+    }
+    
+    @MainActor
+    func testPersistentCommandDeduplicationLimitsTo200Commands() {
+        let suiteName = "test_dedup_limit_\(UUID().uuidString)"
+        let testDefaults = UserDefaults(suiteName: suiteName)!
+        defer {
+            testDefaults.removePersistentDomain(forName: suiteName)
+        }
+        
+        let manager = WatchConnectivityIOSManager(userDefaults: testDefaults, setupSession: false)
+        var ids: [String] = []
+        for i in 0..<205 {
+            let id = "cmd_\(i)"
+            ids.append(id)
+            _ = manager.isDuplicateCommand(id)
+        }
+        
+        // Ricrea il manager per verificare cosa è stato salvato
+        let managerRecreated = WatchConnectivityIOSManager(userDefaults: testDefaults, setupSession: false)
+        // Gli ultimi 200 comandi (cmd_5 .. cmd_204) sono ancora presenti
+        XCTAssertTrue(managerRecreated.isDuplicateCommand(ids[5]))
+        XCTAssertTrue(managerRecreated.isDuplicateCommand(ids[204]))
+        // I primi 5 comandi (cmd_0 .. cmd_4) sono stati scartati dalla finestra scorrevole di 200
+        XCTAssertFalse(managerRecreated.hasProcessedCommand(ids[0]))
+        XCTAssertFalse(managerRecreated.hasProcessedCommand(ids[4]))
+    }
+    
+    @MainActor
     func testWatchCounterCommandTimestampOrdering() {
         let manager = WatchConnectivityIOSManager.shared
         let stepKey = "test_step_\(UUID().uuidString)"
