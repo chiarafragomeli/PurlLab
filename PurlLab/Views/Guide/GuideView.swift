@@ -368,52 +368,6 @@ struct GuideView: View {
         currentStepIndex = 0
         project.completedAt = nil
     }
-    
-    private func loadPreloadedGuide() {
-        guard let guideUrl = Bundle.main.url(forResource: "NoFrillsGuide_M", withExtension: "json"),
-              let guideData = try? Data(contentsOf: guideUrl),
-              let guide = try? JSONDecoder().decode(GeneratedGuideResponse.self, from: guideData) else {
-            errorMessage = "Guida di test non trovata nel bundle."
-            return
-        }
-        
-        project.selectedSize = "M"
-        project.completedAt = nil
-        for step in project.guideSteps {
-            modelContext.delete(step)
-        }
-        project.guideSteps.removeAll()
-        
-        var stepOrder = 0
-        for section in guide.sections {
-            for stepData in section.steps {
-                let step = GuideStep(
-                    sectionTitle: GeminiService.cleanSectionName(section.name),
-                    title: stepData.title ?? "",
-                    stepType: stepData.stepType ?? "single_action",
-                    instructionText: stepData.instruction,
-                    subSteps: stepData.subSteps ?? [],
-                    repeatVariations: stepData.repeatVariations ?? [],
-                    rowsPerRepeat: stepData.rowsPerRepeat,
-                    totalRepeats: stepData.totalRepeats,
-                    stitchCountBefore: stepData.stitchCountBefore,
-                    stitchCountAfter: stepData.stitchCountAfter,
-                    targetMeasureCm: stepData.targetMeasureCm,
-                    sourcePage: stepData.sourcePage,
-                    sourceQuote: stepData.sourceQuote,
-                    orderIndex: stepOrder,
-                    hasCounter: stepData.hasCounter ?? false,
-                    counterLabel: stepData.counterLabel,
-                    currentStepCount: 0,
-                    targetStepCount: stepData.targetStepCount
-                )
-                step.project = project
-                project.guideSteps.append(step)
-                stepOrder += 1
-            }
-        }
-        currentStepIndex = 0
-    }
 }
 
 // MARK: - Vista Card Singola (Focus Mode)

@@ -256,12 +256,6 @@ struct ProjectListView: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
                         Button {
-                            loadSamplePattern()
-                        } label: {
-                            Label("Carica No Frills Sweater (Test)", systemImage: "sparkles")
-                        }
-                        
-                        Button {
                             showingFilePicker = true
                         } label: {
                             Label("Importa PDF Pattern da File", systemImage: "doc.badge.plus")
@@ -373,58 +367,6 @@ struct ProjectListView: View {
         WatchConnectivityIOSManager.shared.syncAllProjectsToWatch()
     }
     
-    private func loadSamplePattern() {
-        guard let sampleUrl = Bundle.main.url(forResource: "NoFrillsSweater", withExtension: "pdf"),
-              let pdfData = try? Data(contentsOf: sampleUrl) else {
-            print("PDF di test non trovato nel bundle.")
-            return
-        }
-        
-        let project = KnittingProject(
-            title: "No Frills Sweater",
-            designer: "PetiteKnit",
-            selectedSize: "M",
-            pdfData: pdfData
-        )
-        
-        let c1 = RowCounter(title: "Contatore Globale")
-        c1.project = project
-        project.counters.append(c1)
-        
-        if let guideUrl = Bundle.main.url(forResource: "NoFrillsGuide_M", withExtension: "json"),
-           let guideData = try? Data(contentsOf: guideUrl),
-           let guide = try? JSONDecoder().decode(GeneratedGuideResponse.self, from: guideData) {
-            var stepOrder = 0
-            for section in guide.sections {
-                for stepData in section.steps {
-                    let step = GuideStep(
-                        sectionTitle: GeminiService.cleanSectionName(section.name),
-                        title: stepData.title ?? "",
-                        stepType: stepData.stepType ?? "single_action",
-                        instructionText: stepData.instruction,
-                        subSteps: stepData.subSteps ?? [],
-                        repeatVariations: stepData.repeatVariations ?? [],
-                        rowsPerRepeat: stepData.rowsPerRepeat,
-                        totalRepeats: stepData.totalRepeats,
-                        stitchCountBefore: stepData.stitchCountBefore,
-                        stitchCountAfter: stepData.stitchCountAfter,
-                        targetMeasureCm: stepData.targetMeasureCm,
-                        sourcePage: stepData.sourcePage,
-                        sourceQuote: stepData.sourceQuote,
-                        orderIndex: stepOrder,
-                        hasCounter: stepData.hasCounter ?? (stepData.targetStepCount != nil && stepData.targetStepCount! > 0),
-                        counterLabel: stepData.counterLabel,
-                        targetStepCount: stepData.targetStepCount
-                    )
-                    step.project = project
-                    project.guideSteps.append(step)
-                    stepOrder += 1
-                }
-            }
-        }
-        
-        modelContext.insert(project)
-    }
     
     private func handlePdfImport(_ result: Result<[URL], Error>) {
         do {
