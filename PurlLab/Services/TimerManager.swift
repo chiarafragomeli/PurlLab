@@ -31,6 +31,7 @@ final class TimerManager {
     private var modelContext: ModelContext?
     
     var autoPauseMinutes: Double = 15.0
+    var clock: any AppClock = SystemClock()
     
     private init() {
         setupLifecycleObservers()
@@ -109,7 +110,7 @@ final class TimerManager {
     /// persiste in sicurezza il chunk lavorato finora per prevenire perdite se iOS chiude l'app in background.
     func handleAppDidEnterBackground() {
         guard isRunning else { return }
-        backgroundEntryDate = Date()
+        backgroundEntryDate = clock.now
         stopTicker()
         _ = flushElapsedToTotal()
     }
@@ -120,7 +121,7 @@ final class TimerManager {
         retryPendingSessions()
         guard isRunning, let start = sessionStartDate else { return }
         
-        let now = Date()
+        let now = clock.now
         let timeSinceLastInteraction = now.timeIntervalSince(lastInteractionDate)
         let maxAllowedInactiveSeconds = autoPauseMinutes * 60.0
         
@@ -153,7 +154,7 @@ final class TimerManager {
         session.project = project
         project.timerSessions.append(session)
         project.totalSecondsWorked += duration
-        project.updatedAt = Date()
+        project.updatedAt = clock.now
         do {
             try modelContext.save()
             return true
@@ -176,8 +177,8 @@ final class TimerManager {
         
         activeProjectId = projectId
         isRunning = true
-        sessionStartDate = Date()
-        lastInteractionDate = Date()
+        sessionStartDate = clock.now
+        lastInteractionDate = clock.now
         elapsedSecondsInCurrentSession = 0
         
         startTicker()
@@ -190,7 +191,7 @@ final class TimerManager {
         guard isRunning else { return 0 }
         isRunning = false
         
-        let now = Date()
+        let now = clock.now
         let start = sessionStartDate ?? now
         
         // Ricalcola matematicamente l'elapsed da sessionStartDate invece di usare il valore congelato
@@ -244,7 +245,7 @@ final class TimerManager {
     func flushElapsedToTotal() -> TimeInterval {
         retryPendingSessions()
         guard isRunning, let start = sessionStartDate, let projectId = activeProjectId else { return 0 }
-        let now = Date()
+        let now = clock.now
         let duration = max(0, now.timeIntervalSince(start))
         guard duration > 0 else { return 0 }
         
@@ -260,7 +261,7 @@ final class TimerManager {
     }
     
     func registerInteraction() {
-        lastInteractionDate = Date()
+        lastInteractionDate = clock.now
     }
     
     // MARK: - Timer con Coalescing per Risparmio Energetico
@@ -285,7 +286,7 @@ final class TimerManager {
     
     private func tick() {
         guard let start = sessionStartDate else { return }
-        let now = Date()
+        let now = clock.now
         elapsedSecondsInCurrentSession = now.timeIntervalSince(start)
         
         // Auto-pause se inattivo da più di autoPauseMinutes

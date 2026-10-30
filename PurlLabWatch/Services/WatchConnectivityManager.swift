@@ -41,6 +41,7 @@ final class WatchConnectivityManager: NSObject, WCSessionDelegate {
     var lastSyncDate: Date? = nil
     private(set) var inFlightCommandsCount: Int = 0
     var transport: (any WatchTransport)?
+    var clock: any AppClock = SystemClock()
     
     /// Timeout per ciascun comando in volo (default: 8 secondi come da specifica)
     var inFlightCommandTimeoutNanoseconds: UInt64 = 8_000_000_000
@@ -235,6 +236,7 @@ final class WatchConnectivityManager: NSObject, WCSessionDelegate {
         activeInFlightCommandIds.removeAll()
         inFlightCommandsCount = 0
         inFlightCommandTimeoutNanoseconds = 8_000_000_000
+        clock = SystemClock()
     }
     
     // MARK: - Invio Comandi a iPhone via WatchConnectivity
@@ -256,7 +258,7 @@ final class WatchConnectivityManager: NSObject, WCSessionDelegate {
         let payload = WatchMessagePayload(message: message)
         if transport.isReachable {
             let timeoutTask = Task { @MainActor [weak self] in
-                try? await Task.sleep(nanoseconds: self?.inFlightCommandTimeoutNanoseconds ?? 8_000_000_000)
+                try? await (self?.clock ?? SystemClock()).sleep(nanoseconds: self?.inFlightCommandTimeoutNanoseconds ?? 8_000_000_000)
                 guard !Task.isCancelled, let self = self else { return }
                 if self.activeInFlightCommandIds.remove(commandId) != nil {
                     self.inFlightTimeoutTasks.removeValue(forKey: commandId)

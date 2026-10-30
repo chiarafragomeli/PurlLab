@@ -1,5 +1,19 @@
 import Foundation
 
+// MARK: - Clock Abstraction (iniettabile per test deterministici e immediati)
+public protocol AppClock: Sendable {
+    var now: Date { get }
+    func sleep(nanoseconds: UInt64) async throws
+}
+
+public struct SystemClock: AppClock {
+    public init() {}
+    public var now: Date { Date() }
+    public func sleep(nanoseconds: UInt64) async throws {
+        try await Task.sleep(nanoseconds: nanoseconds)
+    }
+}
+
 /// Modello sintetico di un progetto da visualizzare e controllare su Apple Watch
 struct WatchProjectSummary: Codable, Identifiable, Sendable {
     let id: String

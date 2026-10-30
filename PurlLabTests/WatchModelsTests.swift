@@ -386,8 +386,10 @@ final class WatchModelsTests: XCTestCase {
         
         watchManager.incrementMainCounter()
         
-        // Attendi che il Task asincrono di risposta completi
-        try await Task.sleep(nanoseconds: 60_000_000)
+        // Cede l'esecuzione al Task asincrono di risposta su MainActor senza attese reali
+        for _ in 0..<5 {
+            await Task.yield()
+        }
         
         // 1. Il messaggio è stato inviato via sendMessage
         XCTAssertEqual(fakeTransport.sentMessages.count, 1)
@@ -407,8 +409,8 @@ final class WatchModelsTests: XCTestCase {
         fakeTransport.replyToReturn = nil
         fakeTransport.errorToReturn = nil
         watchManager.transport = fakeTransport
-        // Timeout breve per il test: 30ms anziché 8s
-        watchManager.inFlightCommandTimeoutNanoseconds = 30_000_000
+        let testClock = TestClock()
+        watchManager.clock = testClock
         
         let projId = UUID().uuidString
         let summary = WatchProjectSummary(
@@ -449,8 +451,18 @@ final class WatchModelsTests: XCTestCase {
         XCTAssertNotNil(originalCommandId)
         XCTAssertEqual(fakeTransport.sentMessages.first?["command"] as? String, WatchCommandType.incrementMainCounter.rawValue)
         
-        // Attendi che scada il timeout (60ms > 30ms)
-        try await Task.sleep(nanoseconds: 60_000_000)
+        // Cede l'esecuzione per consentire al timeoutTask di avviare l'attesa su clock.sleep
+        for _ in 0..<5 {
+            await Task.yield()
+        }
+        
+        // Fai avanzare il TestClock di 8 secondi (tempo di timeout): nessuna attesa reale
+        testClock.advance(by: 8.0)
+        
+        // Cede l'esecuzione per consentire l'elaborazione su MainActor del task di timeout
+        for _ in 0..<5 {
+            await Task.yield()
+        }
         
         // Allo scadere:
         // 1. Il comando originale deve risultare reinviato via fallback (transferUserInfoFallback) con lo stesso commandId

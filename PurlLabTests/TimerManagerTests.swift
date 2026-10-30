@@ -2,11 +2,97 @@ import XCTest
 import SwiftData
 @testable import PurlLab
 
+// MARK: - TestClock per test deterministici senza attese reali
+final class TestClock: AppClock, @unchecked Sendable {
+    private var internalNow: Date
+    private let lock = NSLock()
+    private var pendingSleeps: [(deadline: Date, continuation: UnsafeContinuation<Void, Never>)] = []
+    
+    var now: Date {
+        get { getNow() }
+        set { setNow(newValue) }
+    }
+    
+    private func getNow() -> Date {
+        lock.lock()
+        defer { lock.unlock() }
+        return internalNow
+    }
+    
+    private func setNow(_ date: Date) {
+        lock.lock()
+        defer { lock.unlock() }
+        internalNow = date
+    }
+    
+    init(startDate: Date = Date()) {
+        self.internalNow = startDate
+    }
+    
+    func advance(by seconds: TimeInterval) {
+        let ready = advanceTimeAndExtractReady(by: seconds)
+        for cont in ready {
+            cont.resume()
+        }
+    }
+    
+    private func advanceTimeAndExtractReady(by seconds: TimeInterval) -> [UnsafeContinuation<Void, Never>] {
+        lock.lock()
+        defer { lock.unlock() }
+        internalNow = internalNow.addingTimeInterval(seconds)
+        let current = internalNow
+        var remaining: [(deadline: Date, continuation: UnsafeContinuation<Void, Never>)] = []
+        var ready: [UnsafeContinuation<Void, Never>] = []
+        for item in pendingSleeps {
+            if item.deadline <= current {
+                ready.append(item.continuation)
+            } else {
+                remaining.append(item)
+            }
+        }
+        pendingSleeps = remaining
+        return ready
+    }
+    
+    private func addSleep(deadline: Date, continuation: UnsafeContinuation<Void, Never>) {
+        lock.lock()
+        defer { lock.unlock() }
+        pendingSleeps.append((deadline: deadline, continuation: continuation))
+    }
+    
+    func sleep(nanoseconds: UInt64) async throws {
+        let durationSeconds = Double(nanoseconds) / 1_000_000_000.0
+        let currentNow = now
+        let deadline = currentNow.addingTimeInterval(durationSeconds)
+        
+        await withUnsafeContinuation { continuation in
+            addSleep(deadline: deadline, continuation: continuation)
+        }
+        try Task.checkCancellation()
+    }
+    
+    func reset() {
+        let all = removeAllPending()
+        for cont in all {
+            cont.resume()
+        }
+    }
+    
+    private func removeAllPending() -> [UnsafeContinuation<Void, Never>] {
+        lock.lock()
+        defer { lock.unlock() }
+        let ready = pendingSleeps.map(\.continuation)
+        pendingSleeps.removeAll()
+        return ready
+    }
+}
+
 @MainActor
 final class TimerManagerTests: XCTestCase {
     
     private var container: ModelContainer!
     private var context: ModelContext!
+    private var testClock: TestClock!
     
     override func setUp() {
         super.setUp()
@@ -19,6 +105,8 @@ final class TimerManagerTests: XCTestCase {
         let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
         container = try! ModelContainer(for: schema, configurations: [configuration])
         context = ModelContext(container)
+        testClock = TestClock()
+        TimerManager.shared.clock = testClock
         TimerManager.shared.configure(with: context)
         WatchConnectivityIOSManager.shared.configure(with: context)
     }
@@ -29,6 +117,9 @@ final class TimerManagerTests: XCTestCase {
         TimerManager.shared.configure(with: nil)
         WatchConnectivityIOSManager.shared.configure(with: nil)
         TimerManager.shared.autoPauseMinutes = 15.0
+        TimerManager.shared.clock = SystemClock()
+        testClock?.reset()
+        testClock = nil
         container = nil
         context = nil
         super.tearDown()
@@ -63,17 +154,17 @@ final class TimerManagerTests: XCTestCase {
         XCTAssertTrue(TimerManager.shared.isRunning)
         XCTAssertEqual(TimerManager.shared.activeProjectId, project.id)
         
-        try await Task.sleep(nanoseconds: 30_000_000) // 30ms
+        testClock.advance(by: 30)
         
         let duration = TimerManager.shared.pause()
-        XCTAssertGreaterThan(duration, 0)
+        XCTAssertEqual(duration, 30.0, accuracy: 0.001)
         XCTAssertFalse(TimerManager.shared.isRunning)
         XCTAssertNil(TimerManager.shared.activeProjectId)
         
         XCTAssertEqual(project.timerSessions.count, 1)
         let savedSession = try XCTUnwrap(project.timerSessions.first)
-        XCTAssertEqual(savedSession.durationSeconds, duration, accuracy: 0.001)
-        XCTAssertEqual(project.totalSecondsWorked, duration, accuracy: 0.001)
+        XCTAssertEqual(savedSession.durationSeconds, 30.0, accuracy: 0.001)
+        XCTAssertEqual(project.totalSecondsWorked, 30.0, accuracy: 0.001)
         XCTAssertNotNil(savedSession.endDate)
     }
     
@@ -85,20 +176,20 @@ final class TimerManagerTests: XCTestCase {
         try context.save()
         
         TimerManager.shared.start(for: projectA.id)
-        try await Task.sleep(nanoseconds: 30_000_000)
+        testClock.advance(by: 30)
         
         // Avviare il timer per il progetto B deve mettere in pausa A e persistere la sessione di A
         TimerManager.shared.start(for: projectB.id)
         XCTAssertEqual(TimerManager.shared.activeProjectId, projectB.id)
         XCTAssertEqual(projectA.timerSessions.count, 1)
-        XCTAssertGreaterThan(projectA.totalSecondsWorked, 0)
+        XCTAssertEqual(projectA.totalSecondsWorked, 30.0, accuracy: 0.001)
         XCTAssertEqual(projectB.timerSessions.count, 0)
         
-        try await Task.sleep(nanoseconds: 30_000_000)
+        testClock.advance(by: 45)
         TimerManager.shared.pause()
         
         XCTAssertEqual(projectB.timerSessions.count, 1)
-        XCTAssertGreaterThan(projectB.totalSecondsWorked, 0)
+        XCTAssertEqual(projectB.totalSecondsWorked, 45.0, accuracy: 0.001)
     }
     
     func testRecalculateElapsedFromSessionStartDateNotFrozenValue() async throws {
@@ -110,12 +201,12 @@ final class TimerManagerTests: XCTestCase {
         // Simula il timer congelato a 0 (es. tick non ancora scattato o app in background)
         TimerManager.shared.elapsedSecondsInCurrentSession = 0
         
-        try await Task.sleep(nanoseconds: 40_000_000)
+        testClock.advance(by: 40)
         
         let duration = TimerManager.shared.pause()
         // Deve ricalcolare da sessionStartDate e non usare il valore 0 congelato
-        XCTAssertGreaterThan(duration, 0.02)
-        XCTAssertEqual(project.totalSecondsWorked, duration, accuracy: 0.001)
+        XCTAssertEqual(duration, 40.0, accuracy: 0.001)
+        XCTAssertEqual(project.totalSecondsWorked, 40.0, accuracy: 0.001)
     }
     
     func testAutoPausePersistsSessionWhenInactivityTimeoutExceeded() async throws {
@@ -127,7 +218,7 @@ final class TimerManagerTests: XCTestCase {
         TimerManager.shared.start(for: project.id)
         
         // Simula sessione iniziata 5 minuti fa, con ultima interazione 2 minuti fa
-        let now = Date()
+        let now = testClock.now
         TimerManager.shared.sessionStartDate = now.addingTimeInterval(-300) // 5 min fa
         TimerManager.shared.lastInteractionDate = now.addingTimeInterval(-120) // 2 min fa
         
@@ -150,13 +241,13 @@ final class TimerManagerTests: XCTestCase {
         try context.save()
         
         TimerManager.shared.start(for: project.id)
-        try await Task.sleep(nanoseconds: 30_000_000)
+        testClock.advance(by: 30)
         
         // Simula disconnessione / assenza del modelContext durante la pausa
         TimerManager.shared.configure(with: nil)
         
         let duration = TimerManager.shared.pause()
-        XCTAssertGreaterThan(duration, 0)
+        XCTAssertEqual(duration, 30.0, accuracy: 0.001)
         XCTAssertFalse(TimerManager.shared.isRunning)
         
         // La sessione non deve essere andata perduta: deve trovarsi in pendingSessions
@@ -172,7 +263,7 @@ final class TimerManagerTests: XCTestCase {
         // 2. Test recupero al prossimo start
         TimerManager.shared.clearPendingSessionsForTesting()
         TimerManager.shared.start(for: project.id)
-        try await Task.sleep(nanoseconds: 20_000_000)
+        testClock.advance(by: 20)
         TimerManager.shared.configure(with: nil)
         _ = TimerManager.shared.pause()
         XCTAssertEqual(TimerManager.shared.pendingSessions.count, 1)
@@ -196,7 +287,7 @@ final class TimerManagerTests: XCTestCase {
         XCTAssertTrue(TimerManager.shared.isRunning)
         XCTAssertEqual(TimerManager.shared.activeProjectId, project.id)
         
-        try await Task.sleep(nanoseconds: 30_000_000)
+        testClock.advance(by: 30)
         
         TimerManager.shared.cancelTimer(for: project.id)
         
@@ -218,7 +309,7 @@ final class TimerManagerTests: XCTestCase {
             return
         }
         
-        try await Task.sleep(nanoseconds: 20_000_000)
+        testClock.advance(by: 20)
         
         // Simula disconnessione / assenza del modelContext (save impossibile)
         TimerManager.shared.configure(with: nil)
@@ -229,8 +320,9 @@ final class TimerManagerTests: XCTestCase {
         
         // Ripristina il modelContext: ora il flush deve avere successo e avanzare la data
         TimerManager.shared.configure(with: context)
+        testClock.advance(by: 10)
         let successFlush = TimerManager.shared.flushElapsedToTotal()
-        XCTAssertGreaterThan(successFlush, 0)
+        XCTAssertEqual(successFlush, 30.0, accuracy: 0.001)
         XCTAssertNotEqual(TimerManager.shared.sessionStartDate, originalStart)
         XCTAssertEqual(project.timerSessions.count, 1)
     }
