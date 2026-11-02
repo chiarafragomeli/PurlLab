@@ -253,6 +253,9 @@ struct PurlLabApp: App {
             case .success(let container):
                 ProjectListView()
                     .modelContainer(container)
+                    .onAppear {
+                        UIApplication.shared.isIdleTimerDisabled = true
+                    }
                 
             case .failure(let error):
                 StorageErrorBlockingView(
@@ -292,6 +295,13 @@ struct PurlLabApp: App {
                 } message: {
                     Text("I dati creati in questa sessione NON verranno salvati su disco e andranno persi alla chiusura dell'applicazione. Nessun dato esistente verrà toccato o cancellato.")
                 }
+            }
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            if newPhase == .active {
+                UIApplication.shared.isIdleTimerDisabled = true
+            } else {
+                UIApplication.shared.isIdleTimerDisabled = false
             }
         }
     }
