@@ -780,6 +780,22 @@ struct GuideSingleCardView: View {
                         step.completedAt = Date()
                         
                         let targetProject = project ?? step.project
+                        
+                        // Se completiamo l'ultimo step contiguo di una sezione puramente informativa,
+                        // sanifica eventuali altri step informativi con lo stesso titolo
+                        let currentSectionSteps = steps.filter { $0.sectionTitle == step.sectionTitle }
+                        if currentSectionSteps.allSatisfy({ $0.stepType == "info" || (!$0.hasCounter && ($0.targetStepCount == nil || $0.targetStepCount == 0)) }) {
+                            let isLastInBlock = currentIndex + 1 >= steps.count || steps[currentIndex + 1].sectionTitle != step.sectionTitle
+                            if isLastInBlock {
+                                for s in currentSectionSteps where !s.isCompleted {
+                                    s.isCompleted = true
+                                    if s.completedAt == nil { s.completedAt = Date() }
+                                }
+                            }
+                        }
+                        
+                        try? targetProject?.modelContext?.save()
+                        
                         if WatchConnectivityIOSManager.shared.activeStepId == step.id {
                             if !isLast {
                                 let nextStep = steps[currentIndex + 1]
@@ -1507,6 +1523,8 @@ struct GuideStepRow: View {
             Button {
                 step.isCompleted.toggle()
                 step.completedAt = step.isCompleted ? Date() : nil
+                try? step.project?.modelContext?.save()
+                WatchConnectivityIOSManager.shared.syncAllProjectsToWatch()
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
             } label: {
                 Image(systemName: step.isCompleted ? "checkmark.circle.fill" : "circle")
@@ -1709,10 +1727,26 @@ struct GenerateGuideSheet: View {
                     project.guideSteps.removeAll()
                     
                     var stepOrder = 0
+                    var seenSectionNames: Set<String> = []
+                    var lastSectionName: String? = nil
                     for section in response.sections {
+                        var rawName = GeminiService.cleanSectionName(section.name)
+                        if rawName.isEmpty { rawName = "Sezione" }
+                        
+                        var distinctName = rawName
+                        if seenSectionNames.contains(rawName) && lastSectionName != rawName {
+                            if rawName.localizedCaseInsensitiveContains("informazion") || rawName.localizedCaseInsensitiveContains("specifiche") {
+                                distinctName = "\(rawName) (Note)"
+                            } else {
+                                distinctName = "\(rawName) (Parte 2)"
+                            }
+                        }
+                        seenSectionNames.insert(rawName)
+                        lastSectionName = rawName
+                        
                         for stepData in section.steps {
                             let step = GuideStep(
-                                sectionTitle: GeminiService.cleanSectionName(section.name),
+                                sectionTitle: distinctName,
                                 title: stepData.title ?? "",
                                 stepType: stepData.stepType ?? "single_action",
                                 instructionText: stepData.instruction,

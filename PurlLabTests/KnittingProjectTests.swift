@@ -512,6 +512,86 @@ final class KnittingProjectTests: XCTestCase {
         XCTAssertEqual(reply["error"] as? String, "notReady")
     }
     
+    // MARK: - Test Avanzamento Sezioni
+    
+    func testInformationalSectionWithTrailingOrphanCardIsCompleted() {
+        let project = KnittingProject(title: "No frills sweater")
+        context.insert(project)
+        
+        // Simula la struttura esatta riscontrata nel pattern:
+        // Informazioni Generali (step 0, 1, 2) completate
+        let step0 = GuideStep(sectionTitle: "Informazioni Generali", title: "Descrizione del Modello", stepType: "info", instructionText: "Modello top-down", orderIndex: 0, hasCounter: false)
+        step0.isCompleted = true
+        let step1 = GuideStep(sectionTitle: "Informazioni Generali", title: "Guida alle Taglie", stepType: "info", instructionText: "Taglia M", orderIndex: 1, hasCounter: false)
+        step1.isCompleted = true
+        let step2 = GuideStep(sectionTitle: "Informazioni Generali", title: "Aumenti Raglan", stepType: "info", instructionText: "AID e AIS", orderIndex: 2, hasCounter: false)
+        step2.isCompleted = true
+        
+        // Sezione Sprone intermedia
+        let step3 = GuideStep(sectionTitle: "Sprone", title: "Avvio Maglie", stepType: "single_action", instructionText: "Avvia 114 m", orderIndex: 3, hasCounter: true, currentStepCount: 114, targetStepCount: 114)
+        
+        // Card orfana informativa generata in fondo con lo stesso sectionTitle
+        let step32 = GuideStep(sectionTitle: "Informazioni Generali", title: "Motivo a righe", stepType: "info", instructionText: "Note righe", orderIndex: 32, hasCounter: false)
+        step32.isCompleted = false
+        
+        for s in [step0, step1, step2, step3, step32] {
+            s.project = project
+        }
+        project.guideSteps = [step0, step1, step2, step3, step32]
+        
+        // La sezione "Informazioni Generali" deve risultare completata perché il blocco iniziale contiguo è tutto completato
+        XCTAssertTrue(project.isSectionCompleted(title: "Informazioni Generali"), "Informazioni Generali deve risultare completata anche in presenza di note informative trailing a orderIndex elevato")
+        
+        // Verifica che healCompletedInformationalSections sani anche la card trailing a orderIndex 32
+        project.healCompletedInformationalSections()
+        XCTAssertTrue(step32.isCompleted, "La card orfana informativa deve essere sanata a isCompleted = true")
+        XCTAssertNotNil(step32.completedAt)
+    }
+    
+    func testPrimaryContiguousStepsExtractsOnlyInitialBlock() {
+        let project = KnittingProject(title: "Test Discontinuità")
+        context.insert(project)
+        
+        let s0 = GuideStep(sectionTitle: "Info", instructionText: "1", orderIndex: 0)
+        let s1 = GuideStep(sectionTitle: "Info", instructionText: "2", orderIndex: 1)
+        let s2 = GuideStep(sectionTitle: "Lavoro", instructionText: "3", orderIndex: 2)
+        let s3 = GuideStep(sectionTitle: "Info", instructionText: "4", orderIndex: 3)
+        
+        for s in [s0, s1, s2, s3] { s.project = project }
+        project.guideSteps = [s0, s1, s2, s3]
+        
+        let primary = project.primaryContiguousSteps(for: "Info")
+        XCTAssertEqual(primary.map(\.orderIndex), [0, 1], "Deve fermarsi al primo stacco di sezione e contenere solo [0, 1]")
+    }
+    
+    func testSetSectionCompletedTogglesAllSteps() {
+        let project = KnittingProject(title: "Test Toggle")
+        context.insert(project)
+        
+        let s0 = GuideStep(sectionTitle: "Corpo", instructionText: "A", isCompleted: false, orderIndex: 0)
+        let s1 = GuideStep(sectionTitle: "Corpo", instructionText: "B", isCompleted: false, orderIndex: 1)
+        for s in [s0, s1] { s.project = project }
+        project.guideSteps = [s0, s1]
+        
+        XCTAssertFalse(project.isSectionCompleted(title: "Corpo"))
+        
+        // Completa l'intera sezione
+        project.setSectionCompleted(title: "Corpo", isCompleted: true)
+        XCTAssertTrue(s0.isCompleted)
+        XCTAssertTrue(s1.isCompleted)
+        XCTAssertNotNil(s0.completedAt)
+        XCTAssertNotNil(s1.completedAt)
+        XCTAssertTrue(project.isSectionCompleted(title: "Corpo"))
+        
+        // Annulla il completamento
+        project.setSectionCompleted(title: "Corpo", isCompleted: false)
+        XCTAssertFalse(s0.isCompleted)
+        XCTAssertFalse(s1.isCompleted)
+        XCTAssertNil(s0.completedAt)
+        XCTAssertNil(s1.completedAt)
+        XCTAssertFalse(project.isSectionCompleted(title: "Corpo"))
+    }
+    
     func testDeviceStoreCompatibility() throws {
         let storePath = "/tmp/purl_lab_test_store"
         guard FileManager.default.fileExists(atPath: storePath) else {

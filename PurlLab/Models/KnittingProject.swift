@@ -197,4 +197,113 @@ extension KnittingProject {
         let firstStep = guideSteps.sorted(by: { $0.orderIndex < $1.orderIndex }).first
         WatchConnectivityIOSManager.shared.setActiveStep(firstStep, for: self)
     }
+    
+    // MARK: - Avanzamento e Gestione Sezioni Guida
+    
+    /// Restituisce la lista ordinata e univoca dei titoli delle sezioni della guida
+    var orderedSectionTitles: [String] {
+        var titles: [String] = []
+        let sorted = guideSteps.sorted(by: { $0.orderIndex < $1.orderIndex })
+        for step in sorted {
+            if !titles.contains(step.sectionTitle) {
+                titles.append(step.sectionTitle)
+            }
+        }
+        return titles
+    }
+    
+    /// Restituisce il blocco primario contiguo di schede per una data sezione
+    func primaryContiguousSteps(for sectionTitle: String) -> [GuideStep] {
+        let sorted = guideSteps.sorted(by: { $0.orderIndex < $1.orderIndex })
+        let sectionSteps = sorted.filter { $0.sectionTitle == sectionTitle }
+        guard let first = sectionSteps.first else { return [] }
+        
+        var contiguous: [GuideStep] = [first]
+        for step in sectionSteps.dropFirst() {
+            if let prevIdx = sorted.firstIndex(where: { $0.id == contiguous.last?.id }),
+               let currIdx = sorted.firstIndex(where: { $0.id == step.id }),
+               currIdx == prevIdx + 1 {
+                contiguous.append(step)
+            } else {
+                break
+            }
+        }
+        return contiguous
+    }
+    
+    /// Verifica se una sezione è da considerarsi completata
+    func isSectionCompleted(title: String) -> Bool {
+        let sorted = guideSteps.sorted(by: { $0.orderIndex < $1.orderIndex })
+        let steps = sorted.filter { $0.sectionTitle == title }
+        guard !steps.isEmpty else { return false }
+        
+        // 1. Se tutti gli step associati a questo titolo sono completati -> completata
+        if steps.allSatisfy({ $0.isCompleted }) {
+            return true
+        }
+        
+        let actionableSteps = steps.filter { $0.hasCounter || ($0.targetStepCount != nil && $0.targetStepCount! > 0) }
+        
+        // 2. Se la sezione non ha ferri o contatori da lavorare (es. "Informazioni Generali", "Specifiche del Progetto")
+        if actionableSteps.isEmpty {
+            let primary = primaryContiguousSteps(for: title)
+            if !primary.isEmpty && primary.allSatisfy({ $0.isCompleted }) {
+                return true
+            }
+            let completed = steps.filter { $0.isCompleted }
+            if !completed.isEmpty {
+                let maxCompletedOrder = completed.map(\.orderIndex).max() ?? -1
+                let uncompleted = steps.filter { !$0.isCompleted }
+                if uncompleted.allSatisfy({ $0.orderIndex > maxCompletedOrder }) {
+                    return true
+                }
+            }
+        } else {
+            // 3. Sezione con lavorazione: se tutti gli step contatori sono completati
+            if actionableSteps.allSatisfy({ $0.isCompleted }) {
+                let primaryInfo = primaryContiguousSteps(for: title).filter { !$0.hasCounter && ($0.targetStepCount == nil || $0.targetStepCount == 0) }
+                if primaryInfo.isEmpty || primaryInfo.allSatisfy({ $0.isCompleted }) {
+                    return true
+                }
+            }
+        }
+        
+        return false
+    }
+    
+    /// Modifica lo stato di completamento di tutti gli step di una sezione
+    @MainActor
+    func setSectionCompleted(title: String, isCompleted: Bool) {
+        let steps = guideSteps.filter { $0.sectionTitle == title }
+        let now = Date()
+        for step in steps {
+            step.isCompleted = isCompleted
+            step.completedAt = isCompleted ? now : nil
+        }
+        try? modelContext?.save()
+        WatchConnectivityIOSManager.shared.syncAllProjectsToWatch()
+    }
+    
+    /// Ripristina la coerenza per eventuali step informativi residui in sezioni già completate
+    @MainActor
+    func healCompletedInformationalSections() {
+        var didMutate = false
+        let now = Date()
+        for title in orderedSectionTitles {
+            if isSectionCompleted(title: title) {
+                let sectionSteps = guideSteps.filter { $0.sectionTitle == title }
+                for step in sectionSteps where !step.isCompleted && (step.stepType == "info" || (!step.hasCounter && (step.targetStepCount == nil || step.targetStepCount == 0))) {
+                    step.isCompleted = true
+                    if step.completedAt == nil {
+                        step.completedAt = now
+                    }
+                    didMutate = true
+                }
+            }
+        }
+        if didMutate {
+            try? modelContext?.save()
+            WatchConnectivityIOSManager.shared.syncAllProjectsToWatch()
+        }
+    }
 }

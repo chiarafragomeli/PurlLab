@@ -369,21 +369,29 @@ struct GuideSectionsProgressCard: View {
         project.guideSteps.sorted(by: { $0.orderIndex < $1.orderIndex })
     }
     
-    private var sectionsSummary: [(title: String, worked: Int, target: Int?, isComplete: Bool, stitches: Int?)] {
-        var orderedTitles: [String] = []
-        for step in sortedSteps {
-            if !orderedTitles.contains(step.sectionTitle) {
-                orderedTitles.append(step.sectionTitle)
-            }
-        }
-        
-        return orderedTitles.map { title in
+    struct SectionSummaryItem: Identifiable {
+        var id: String { title }
+        let title: String
+        let worked: Int
+        let target: Int?
+        let isComplete: Bool
+        let stitches: Int?
+    }
+    
+    private var sectionsSummary: [SectionSummaryItem] {
+        project.orderedSectionTitles.map { title in
             let steps = sortedSteps.filter { $0.sectionTitle == title }
             let worked = steps.reduce(0) { $0 + $1.currentStepCount }
             let target = steps.compactMap { $0.targetStepCount }.reduce(0, +)
-            let isComplete = steps.allSatisfy { $0.isCompleted }
+            let isComplete = project.isSectionCompleted(title: title)
             let lastStitch = steps.compactMap { $0.stitchCountAfter ?? $0.stitchCountBefore }.last
-            return (title, worked, target > 0 ? target : nil, isComplete, lastStitch)
+            return SectionSummaryItem(
+                title: title,
+                worked: worked,
+                target: target > 0 ? target : nil,
+                isComplete: isComplete,
+                stitches: lastStitch
+            )
         }
     }
     
@@ -400,37 +408,44 @@ struct GuideSectionsProgressCard: View {
             }
             
             VStack(spacing: 10) {
-                ForEach(sectionsSummary, id: \.title) { item in
-                    HStack(spacing: 12) {
-                        Image(systemName: item.isComplete ? "checkmark.circle.fill" : "circle")
-                            .foregroundColor(item.isComplete ? .green : .secondary)
-                            .font(.subheadline)
-                        
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(item.title)
-                                .font(.subheadline.bold())
-                                .foregroundColor(.primary)
-                                .lineLimit(1)
+                ForEach(sectionsSummary) { item in
+                    Button {
+                        project.setSectionCompleted(title: item.title, isCompleted: !item.isComplete)
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: item.isComplete ? "checkmark.circle.fill" : "circle")
+                                .foregroundColor(item.isComplete ? .green : .secondary)
+                                .font(.subheadline)
                             
-                            if let sts = item.stitches {
-                                Text("\(sts) maglie sul ferro")
-                                    .font(.caption2)
-                                    .foregroundColor(.indigo)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(item.title)
+                                    .font(.subheadline.bold())
+                                    .foregroundColor(.primary)
+                                    .lineLimit(1)
+                                
+                                if let sts = item.stitches {
+                                    Text("\(sts) maglie sul ferro")
+                                        .font(.caption2)
+                                        .foregroundColor(.indigo)
+                                }
+                            }
+                            
+                            Spacer()
+                            
+                            if let target = item.target {
+                                Text("\(item.worked)/\(target) f")
+                                    .font(.caption.monospacedDigit().bold())
+                                    .foregroundColor(item.worked >= target ? .green : .secondary)
+                            } else if item.worked > 0 {
+                                Text("\(item.worked) f")
+                                    .font(.caption.monospacedDigit())
+                                    .foregroundColor(.secondary)
                             }
                         }
-                        
-                        Spacer()
-                        
-                        if let target = item.target {
-                            Text("\(item.worked)/\(target) f")
-                                .font(.caption.monospacedDigit().bold())
-                                .foregroundColor(item.worked >= target ? .green : .secondary)
-                        } else if item.worked > 0 {
-                            Text("\(item.worked) f")
-                                .font(.caption.monospacedDigit())
-                                .foregroundColor(.secondary)
-                        }
+                        .contentShape(Rectangle())
                     }
+                    .buttonStyle(.plain)
                     .padding(.vertical, 4)
                     
                     if item.title != sectionsSummary.last?.title {
@@ -443,6 +458,9 @@ struct GuideSectionsProgressCard: View {
         .background(Color(.secondarySystemGroupedBackground))
         .cornerRadius(20)
         .shadow(color: Color.black.opacity(0.04), radius: 8, x: 0, y: 2)
+        .onAppear {
+            project.healCompletedInformationalSections()
+        }
     }
 }
 
