@@ -306,4 +306,42 @@ extension KnittingProject {
             WatchConnectivityIOSManager.shared.syncAllProjectsToWatch()
         }
     }
+    
+    /// Riordina e ricompatta gli indici (orderIndex) di tutte le schede del progetto in modo che:
+    /// 1. Tutte le schede appartenenti alla stessa sezione siano contigue e posizionate alla fine di quella sezione specifica.
+    /// 2. Le sezioni mantengano l'ordine cronologico della loro comparsa.
+    /// 3. Gli indici orderIndex siano sequenziali e senza buchi (0, 1, 2, ...).
+    @MainActor
+    func reorderStepsBySectionContiguity() {
+        guard !guideSteps.isEmpty else { return }
+        
+        let sorted = guideSteps.sorted(by: { $0.orderIndex < $1.orderIndex })
+        
+        // Ordine delle sezioni determinato dal primo step apparso per ciascuna sezione
+        var sectionOrder: [String] = []
+        for step in sorted {
+            if !sectionOrder.contains(step.sectionTitle) {
+                sectionOrder.append(step.sectionTitle)
+            }
+        }
+        
+        var newOrderIndex = 0
+        var didChange = false
+        
+        for section in sectionOrder {
+            let sectionSteps = sorted.filter { $0.sectionTitle == section }
+            for step in sectionSteps {
+                if step.orderIndex != newOrderIndex {
+                    step.orderIndex = newOrderIndex
+                    didChange = true
+                }
+                newOrderIndex += 1
+            }
+        }
+        
+        if didChange {
+            try? modelContext?.save()
+            WatchConnectivityIOSManager.shared.syncAllProjectsToWatch()
+        }
+    }
 }

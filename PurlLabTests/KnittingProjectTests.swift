@@ -592,6 +592,44 @@ final class KnittingProjectTests: XCTestCase {
         XCTAssertFalse(project.isSectionCompleted(title: "Corpo"))
     }
     
+    func testReorderStepsBySectionContiguityMovesNewCardsToEndOfSpecificSection() {
+        let project = KnittingProject(title: "Test Reorder")
+        context.insert(project)
+        
+        let s0 = GuideStep(sectionTitle: "Informazioni Generali", title: "Intro 1", instructionText: "", isCompleted: true, orderIndex: 0)
+        let s1 = GuideStep(sectionTitle: "Informazioni Generali", title: "Intro 2", instructionText: "", isCompleted: true, orderIndex: 1)
+        let s2 = GuideStep(sectionTitle: "Sprone", title: "Avvio", instructionText: "", isCompleted: false, orderIndex: 2)
+        let s3 = GuideStep(sectionTitle: "Sprone", title: "Ferri 1-20", instructionText: "", isCompleted: false, orderIndex: 3)
+        let s4 = GuideStep(sectionTitle: "Maniche", title: "Manica 1", instructionText: "", isCompleted: false, orderIndex: 4)
+        // Scheda creata manualmente dall'utente etichettata "Informazioni Generali" ma finita in fondo (orderIndex 5)
+        let s5 = GuideStep(sectionTitle: "Informazioni Generali", title: "Motivo a righe", instructionText: "", isCompleted: false, orderIndex: 5)
+        
+        for s in [s0, s1, s2, s3, s4, s5] { s.project = project }
+        project.guideSteps = [s0, s1, s2, s3, s4, s5]
+        
+        // Prima del riordino, s5 è all'indice 5 (l'ultima dell'intero progetto -> causerebbe "Termina Guida")
+        XCTAssertEqual(s5.orderIndex, 5)
+        
+        // Esegui il riordino per contiguità di sezione
+        project.reorderStepsBySectionContiguity()
+        
+        // Dopo il riordino:
+        // s5 ("Motivo a righe") deve essere andata alla fine della sezione "Informazioni Generali" (indice 2)
+        XCTAssertEqual(s0.orderIndex, 0)
+        XCTAssertEqual(s1.orderIndex, 1)
+        XCTAssertEqual(s5.orderIndex, 2, "La scheda 'Motivo a righe' deve trovarsi subito dopo 'Intro 2' a indice 2")
+        
+        // Le schede delle sezioni successive devono essere scalate
+        XCTAssertEqual(s2.orderIndex, 3, "Sprone/Avvio deve iniziare a indice 3")
+        XCTAssertEqual(s3.orderIndex, 4)
+        XCTAssertEqual(s4.orderIndex, 5, "L'ultima scheda dell'intero progetto deve essere Manica 1 a indice 5")
+        
+        // Verifichiamo che gli indici siano una sequenza continua 0..<6
+        let sorted = project.guideSteps.sorted(by: { $0.orderIndex < $1.orderIndex })
+        XCTAssertEqual(sorted.map(\.orderIndex), [0, 1, 2, 3, 4, 5])
+        XCTAssertEqual(sorted.map(\.title), ["Intro 1", "Intro 2", "Motivo a righe", "Avvio", "Ferri 1-20", "Manica 1"])
+    }
+    
     func testDeviceStoreCompatibility() throws {
         let storePath = "/tmp/purl_lab_test_store"
         guard FileManager.default.fileExists(atPath: storePath) else {

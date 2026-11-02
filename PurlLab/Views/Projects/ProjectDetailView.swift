@@ -270,7 +270,10 @@ struct ProjectDetailView: View {
             })
         }
         .sheet(isPresented: $showingAddStepSheet) {
-            AddGuideStepSheet(project: project)
+            AddGuideStepSheet(
+                project: project,
+                defaultSection: activeGuideStep?.sectionTitle
+            )
         }
         .sheet(isPresented: $showingGaugeSheet) {
             GaugeRecalculationView(project: project)
@@ -351,6 +354,7 @@ struct ProjectDetailView: View {
         }
         .onAppear {
             guard !project.isDeleted, project.modelContext != nil else { return }
+            project.reorderStepsBySectionContiguity()
             let sorted = project.guideSteps.sorted(by: { $0.orderIndex < $1.orderIndex })
             let savedIdx = UserDefaults.standard.object(forKey: "purl_lab_last_guide_step_\(project.id)") as? Int
             if let saved = savedIdx, saved >= 0 && saved < sorted.count {

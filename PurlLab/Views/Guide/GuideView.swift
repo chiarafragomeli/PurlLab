@@ -251,6 +251,7 @@ struct GuideView: View {
                 }
             }
             .onAppear {
+                project.reorderStepsBySectionContiguity()
                 if !sortedSteps.isEmpty {
                     if currentStepIndex < 0 || currentStepIndex >= sortedSteps.count {
                         let savedIdx = UserDefaults.standard.object(forKey: "purl_lab_last_guide_step_\(project.id)") as? Int
@@ -274,14 +275,17 @@ struct GuideView: View {
             }
             .onReceive(NotificationCenter.default.publisher(for: .watchDidChangeActiveStep)) { notification in
                 if let targetStepId = notification.userInfo?["stepId"] as? UUID,
-                   let idx = sortedSteps.firstIndex(where: { $0.id == targetStepId }) {
+                    let idx = sortedSteps.firstIndex(where: { $0.id == targetStepId }) {
                     withAnimation(.easeInOut(duration: 0.25)) {
                         currentStepIndex = idx
                     }
                 }
             }
             .sheet(isPresented: $showingAddStepSheet) {
-                AddGuideStepSheet(project: project)
+                AddGuideStepSheet(
+                    project: project,
+                    defaultSection: currentStepIndex >= 0 && currentStepIndex < sortedSteps.count ? sortedSteps[currentStepIndex].sectionTitle : nil
+                )
             }
             .sheet(isPresented: $showingGenerateSheet) {
                 GenerateGuideSheet(project: project)
@@ -340,6 +344,9 @@ struct GuideView: View {
         if let idx = project.guideSteps.firstIndex(where: { $0.id == step.id }) {
             project.guideSteps.remove(at: idx)
             modelContext.delete(step)
+            project.reorderStepsBySectionContiguity()
+            try? modelContext.save()
+            WatchConnectivityIOSManager.shared.syncAllProjectsToWatch()
             if currentStepIndex >= project.guideSteps.count {
                 currentStepIndex = max(0, project.guideSteps.count - 1)
             }
@@ -356,7 +363,16 @@ struct GuideView: View {
     private func deleteEntireSection(_ sectionTitle: String) {
         let stepsToDelete = project.guideSteps.filter { $0.sectionTitle == sectionTitle }
         for step in stepsToDelete {
-            deleteStep(step)
+            if let idx = project.guideSteps.firstIndex(where: { $0.id == step.id }) {
+                project.guideSteps.remove(at: idx)
+                modelContext.delete(step)
+            }
+        }
+        project.reorderStepsBySectionContiguity()
+        try? modelContext.save()
+        WatchConnectivityIOSManager.shared.syncAllProjectsToWatch()
+        if currentStepIndex >= project.guideSteps.count {
+            currentStepIndex = max(0, project.guideSteps.count - 1)
         }
     }
     
@@ -1129,6 +1145,7 @@ struct ExtraCounterRow: View {
 struct AddGuideStepSheet: View {
     @Environment(\.dismiss) private var dismiss
     var project: KnittingProject
+    var defaultSection: String? = nil
     
     @State private var sectionTitle: String = ""
     @State private var title: String = ""
@@ -1273,6 +1290,11 @@ struct AddGuideStepSheet: View {
                     .disabled(sectionTitle.trimmingCharacters(in: .whitespaces).isEmpty || instructionText.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
             }
+            .onAppear {
+                if sectionTitle.isEmpty, let def = defaultSection, !def.isEmpty {
+                    sectionTitle = def
+                }
+            }
         }
     }
     
@@ -1291,8 +1313,22 @@ struct AddGuideStepSheet: View {
             .map { $0.trimmingCharacters(in: .whitespaces) }
             .filter { !$0.isEmpty }
         
+        let trimmedSection = sectionTitle.trimmingCharacters(in: .whitespaces)
+        let sorted = project.guideSteps.sorted(by: { $0.orderIndex < $1.orderIndex })
+        let lastInTargetSection = sorted.last(where: { $0.sectionTitle == trimmedSection })
+        
+        let insertIndex: Int
+        if let last = lastInTargetSection {
+            insertIndex = last.orderIndex + 1
+            for s in sorted where s.orderIndex >= insertIndex {
+                s.orderIndex += 1
+            }
+        } else {
+            insertIndex = sorted.count
+        }
+        
         let step = GuideStep(
-            sectionTitle: sectionTitle.trimmingCharacters(in: .whitespaces),
+            sectionTitle: trimmedSection,
             title: title.trimmingCharacters(in: .whitespaces),
             stepType: stepType,
             instructionText: instructionText.trimmingCharacters(in: .whitespaces),
@@ -1302,7 +1338,8 @@ struct AddGuideStepSheet: View {
             stitchCountAfter: Int(stitchCountAfterString),
             targetMeasureCm: Double(targetMeasureString.replacingOccurrences(of: ",", with: ".")),
             sourcePage: Int(sourcePageString),
-            orderIndex: project.guideSteps.count,
+            isCompleted: false,
+            orderIndex: insertIndex,
             hasCounter: stepType == "repeat_pattern" ? true : hasCounter,
             counterLabel: hasCounter ? counterLabel : nil,
             currentStepCount: 0,
@@ -1310,6 +1347,10 @@ struct AddGuideStepSheet: View {
         )
         step.project = project
         project.guideSteps.append(step)
+        
+        project.reorderStepsBySectionContiguity()
+        try? project.modelContext?.save()
+        WatchConnectivityIOSManager.shared.syncAllProjectsToWatch()
     }
 }
 
@@ -1482,7 +1523,10 @@ struct EditGuideStepSheet: View {
     }
     
     private func saveChanges() {
-        step.sectionTitle = sectionTitle.trimmingCharacters(in: .whitespaces)
+        let oldSection = step.sectionTitle
+        let newSection = sectionTitle.trimmingCharacters(in: .whitespaces)
+        
+        step.sectionTitle = newSection
         step.title = title.trimmingCharacters(in: .whitespaces)
         step.stepType = stepType
         step.instructionText = editedText
@@ -1507,6 +1551,12 @@ struct EditGuideStepSheet: View {
         step.stitchCountAfter = Int(stitchCountString)
         step.targetMeasureCm = Double(targetMeasureString.replacingOccurrences(of: ",", with: "."))
         step.sourcePage = Int(sourcePageString)
+        
+        if oldSection != newSection, let proj = step.project {
+            proj.reorderStepsBySectionContiguity()
+        }
+        try? step.project?.modelContext?.save()
+        WatchConnectivityIOSManager.shared.syncAllProjectsToWatch()
     }
 }
 
