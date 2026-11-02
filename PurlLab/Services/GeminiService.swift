@@ -256,6 +256,16 @@ final class GeminiService: @unchecked Sendable {
            - \(sizeFilterPrompt)
            - I nomi delle sezioni ("name") e i titoli delle schede devono essere SOLO in italiano, SENZA la traduzione inglese tra parentesi (es. "Corpo" e NON "Corpo (Body)", "Sprone" e NON "Sprone (Yoke)", "Maniche" e NON "Maniche (Sleeves)").
            - Usa i termini italiani: dir (diritto), rov (rovescio), 2 dir ins (k2tog), 2 dir ins ritorto / acc (ssk / k2tog tbl), AID (M1R), AIS (M1L), MP (marcapunti), ferri accorciati alla tedesca (German short rows).
+        
+        5. GESTIONE DEGLI SCHEMI (CHART A QUADRETTI):
+           - Se il pattern usa schemi a quadretti: NON trascrivere i singoli quadretti e NON dedurre o inventare colori.
+           - Per ogni tratto lavorato a schema crea UNA SOLA SCHEDA con:
+             * Titolo: il nome dello schema e la parte del lavoro (es. "Schema A, corpo").
+             * Istruzione: specifica da quale quadretto/colonna si parte, il senso di lettura (gli schemi partono in basso a destra e si leggono da destra a sinistra), e le eventuali ripetizioni del motivo orizzontale.
+             * sourcePage: imposta il numero di pagina dello schema per la taglia selezionata (se il pattern ha schemi diversi per taglia, usa quello della taglia scelta).
+             * Contatore: hasCounter = true, counterLabel = "Riga schema [Nome]" (es. "Riga schema A"), targetStepCount = numero di righe dello schema (o delle righe da lavorare).
+             * Ripetizioni di righe: per le parti che si ripetono (es. "ripetere le righe 24-39") imposta stepType = "repeat_pattern" con rowsPerRepeat e totalRepeats se calcolabili, altrimenti stepType = "work_to_measure".
+           - Se un numero non è leggibile con certezza: scrivi "verificare nel PDF" nell'istruzione e lascia vuoto/null il rispettivo campo numerico.
         """
         
         let userPrompt = isSizeSpecified
