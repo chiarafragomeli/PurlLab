@@ -199,6 +199,9 @@ final class WatchConnectivityIOSManager: NSObject, WCSessionDelegate {
         if preferRealtime && session.isReachable {
             let payload: [String: Any] = ["syncData": syncData]
             session.sendMessage(payload, replyHandler: nil, errorHandler: nil)
+        } else {
+            // Se l'orologio non è raggiungibile in tempo reale (o app watch non attiva), garantisce la consegna tramite transferUserInfo
+            _ = session.transferUserInfo(["syncData": syncData])
         }
     }
     
@@ -221,14 +224,16 @@ final class WatchConnectivityIOSManager: NSObject, WCSessionDelegate {
         let currentCount = activeStep?.currentStepCount ?? (p.counters.first?.currentCount ?? 0)
         let targetCount = activeStep?.targetStepCount ?? p.counters.first?.targetCount
         let isRunning = TimerManager.shared.isRunning && TimerManager.shared.activeProjectId == p.id
+        let sessionStartDate = isRunning ? (TimerManager.shared.sessionStartDate ?? Date()) : nil
         
         return WatchProjectSummary(
             id: p.id.uuidString,
             title: p.title,
             designer: p.designer,
             selectedSize: p.selectedSize,
-            totalSecondsWorked: p.totalSecondsWorked + (isRunning ? TimerManager.shared.elapsedSecondsInCurrentSession : 0),
+            totalSecondsWorked: p.totalSecondsWorked,
             isTimerRunning: isRunning,
+            timerSessionStartDate: sessionStartDate,
             activeStepId: activeStep?.id.uuidString,
             currentSectionTitle: activeStep?.sectionTitle ?? "",
             currentStepTitle: activeStep?.title ?? "",
@@ -286,8 +291,22 @@ final class WatchConnectivityIOSManager: NSObject, WCSessionDelegate {
             }
         }
         
+        // Gestione rapida di requestFullSync: non richiede projectId valido
+        if command == .requestFullSync {
+            if let pIdString = projectId, !pIdString.isEmpty, let uuid = UUID(uuidString: pIdString), allProjects.contains(where: { $0.id == uuid }) {
+                self.activeProjectId = uuid
+            } else if self.activeProjectId == nil || !allProjects.contains(where: { $0.id == self.activeProjectId }) {
+                self.activeProjectId = allProjects.first?.id
+            }
+            if let syncData = currentSyncData(for: allProjects) {
+                return ["syncData": syncData]
+            } else {
+                return ["error": "encodingFailed"]
+            }
+        }
+        
         let targetProject: KnittingProject?
-        if let pIdString = projectId {
+        if let pIdString = projectId, !pIdString.isEmpty {
             guard let uuid = UUID(uuidString: pIdString),
                   let match = allProjects.first(where: { $0.id == uuid }) else {
                 watchLogger.warning("Comando watch rifiutato: projectId '\(pIdString)' non corrisponde ad alcun progetto valido")
@@ -604,6 +623,9 @@ final class WatchConnectivityIOSManager: NSObject, WCSessionDelegate {
     }
     
     nonisolated func session(_ session: WCSession, didReceiveUserInfo userInfo: [String : Any] = [:]) {
+        if userInfo["syncData"] != nil {
+            return
+        }
         let commandId = userInfo["commandId"] as? String
         let commandRaw = userInfo["command"] as? String
         let projectId = userInfo["projectId"] as? String
@@ -614,7 +636,19 @@ final class WatchConnectivityIOSManager: NSObject, WCSessionDelegate {
         let timestamp = userInfo["timestamp"] as? TimeInterval
         
         Task { @MainActor in
-            _ = self.handleIncomingCommand(commandRaw: commandRaw, projectId: projectId, stepId: stepId, newCount: newCount, oldCount: oldCount, index: index, commandId: commandId, timestamp: timestamp)
+            let reply = self.handleIncomingCommand(
+                commandRaw: commandRaw,
+                projectId: projectId,
+                stepId: stepId,
+                newCount: newCount,
+                oldCount: oldCount,
+                index: index,
+                commandId: commandId,
+                timestamp: timestamp
+            )
+            if reply["syncData"] != nil {
+                self.syncAllProjectsToWatch(preferRealtime: true)
+            }
         }
     }
 }

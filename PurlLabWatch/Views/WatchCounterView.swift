@@ -314,10 +314,17 @@ struct WatchCounterView: View {
                 
                 Spacer()
                 
-                if project.totalSecondsWorked > 0 {
-                    Text(formatWatchTime(project.totalSecondsWorked))
+                TimelineView(.periodic(from: .now, by: 1.0)) { timeline in
+                    let liveSeconds: TimeInterval = {
+                        if project.isTimerRunning, let start = project.timerSessionStartDate {
+                            return project.totalSecondsWorked + max(0, timeline.date.timeIntervalSince(start))
+                        } else {
+                            return project.totalSecondsWorked
+                        }
+                    }()
+                    Text(formatWatchTime(liveSeconds))
                         .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                        .foregroundColor(.secondary)
+                        .foregroundColor(project.isTimerRunning ? .orange : .secondary)
                 }
             }
             .padding(.horizontal, 10)

@@ -220,6 +220,7 @@ struct ProjectListView: View {
                 }
             }
             .onAppear {
+                WatchConnectivityIOSManager.shared.syncAllProjectsToWatch()
                 if ProcessInfo.processInfo.arguments.contains("-openFirstProject") {
                     if let first = projects.first {
                         navigationPath = [first.id]

@@ -300,6 +300,7 @@ struct PurlLabApp: App {
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .active {
                 UIApplication.shared.isIdleTimerDisabled = true
+                WatchConnectivityIOSManager.shared.syncAllProjectsToWatch()
             } else {
                 UIApplication.shared.isIdleTimerDisabled = false
             }

@@ -558,6 +558,174 @@ final class WatchModelsTests: XCTestCase {
         // 20 + (8 - 3) = 25
         XCTAssertEqual(step.currentStepCount, 25, "Rotazione corona 3->8 in ritardo con iPhone a 20 deve produrre 25")
     }
+    
+    @MainActor
+    func testWatchProjectSummaryWithTimerSessionStartDateCodable() throws {
+        let now = Date()
+        let summary = WatchProjectSummary(
+            id: UUID().uuidString,
+            title: "Sophie Scarf",
+            designer: "PetiteKnit",
+            selectedSize: "Piccola",
+            totalSecondsWorked: 320,
+            isTimerRunning: true,
+            timerSessionStartDate: now,
+            activeStepId: UUID().uuidString,
+            currentSectionTitle: "Sciarpa",
+            currentStepTitle: "Aumenti",
+            currentStepIndex: 1,
+            totalStepsCount: 3,
+            isStepCompleted: false,
+            counterLabel: "Ferri di Aumento",
+            currentCount: 15,
+            targetCount: 160,
+            currentStitches: 25,
+            stitchesBefore: 5,
+            stitchesAfter: 25,
+            canGoPrevious: true,
+            canGoNext: true,
+            totalStitchesWorked: 246,
+            totalRowsWorked: 36,
+            extraCounterLabels: ["Ripetizioni"],
+            extraCounterValues: [2]
+        )
+        
+        let encoder = JSONEncoder()
+        let data = try encoder.encode(summary)
+        let decoder = JSONDecoder()
+        let decoded = try decoder.decode(WatchProjectSummary.self, from: data)
+        
+        XCTAssertEqual(decoded.isTimerRunning, true)
+        XCTAssertNotNil(decoded.timerSessionStartDate)
+        XCTAssertEqual(decoded.timerSessionStartDate?.timeIntervalSince1970 ?? 0, now.timeIntervalSince1970, accuracy: 0.001)
+    }
+    
+    @MainActor
+    func testMergeSyncStateProtectsTimerStateWhenInFlight() throws {
+        let coordinator = WatchCommandCoordinator()
+        let transport = FakeWatchTransport()
+        coordinator.transport = transport
+        
+        let projId = UUID().uuidString
+        let startDate = Date()
+        var localProjects = [
+            WatchProjectSummary(
+                id: projId,
+                title: "Test Project",
+                designer: "Test",
+                selectedSize: "M",
+                totalSecondsWorked: 45,
+                isTimerRunning: true,
+                timerSessionStartDate: startDate,
+                activeStepId: nil,
+                currentSectionTitle: "",
+                currentStepTitle: "",
+                currentStepIndex: 0,
+                totalStepsCount: 1,
+                isStepCompleted: false,
+                counterLabel: "Ferri",
+                currentCount: 10,
+                targetCount: nil,
+                currentStitches: nil,
+                stitchesBefore: nil,
+                stitchesAfter: nil,
+                canGoPrevious: false,
+                canGoNext: false,
+                totalStitchesWorked: 100,
+                totalRowsWorked: 10,
+                extraCounterLabels: [],
+                extraCounterValues: []
+            )
+        ]
+        
+        // Simula comando in volo (es. startTimer appena inviato dall'orologio)
+        coordinator.sendCommand(.startTimer, projectId: projId)
+        XCTAssertEqual(coordinator.inFlightCommandsCount, 1)
+        
+        // Arriva uno stato da iPhone con timestamp precedente o con isTimerRunning false
+        let incomingStaleSummary = WatchProjectSummary(
+            id: projId,
+            title: "Test Project",
+            designer: "Test",
+            selectedSize: "M",
+            totalSecondsWorked: 0,
+            isTimerRunning: false,
+            timerSessionStartDate: nil,
+            activeStepId: nil,
+            currentSectionTitle: "",
+            currentStepTitle: "",
+            currentStepIndex: 0,
+            totalStepsCount: 1,
+            isStepCompleted: false,
+            counterLabel: "Ferri",
+            currentCount: 9,
+            targetCount: nil,
+            currentStitches: nil,
+            stitchesBefore: nil,
+            stitchesAfter: nil,
+            canGoPrevious: false,
+            canGoNext: false,
+            totalStitchesWorked: 90,
+            totalRowsWorked: 9,
+            extraCounterLabels: [],
+            extraCounterValues: []
+        )
+        let staleState = WatchSyncState(
+            projects: [incomingStaleSummary],
+            activeProjectId: projId,
+            timestamp: Date().addingTimeInterval(-10)
+        )
+        
+        coordinator.mergeSyncState(staleState, into: &localProjects)
+        
+        // Verifica che lo stato del timer e contatori locali sia rimasto protetto
+        XCTAssertEqual(localProjects.first?.isTimerRunning, true, "isTimerRunning locale deve restare protetto finché il comando è in volo")
+        XCTAssertNotNil(localProjects.first?.timerSessionStartDate, "timerSessionStartDate deve restare protetto")
+        XCTAssertEqual(localProjects.first?.totalSecondsWorked, 45)
+        XCTAssertEqual(localProjects.first?.currentCount, 10)
+    }
+    
+    @MainActor
+    func testRequestFullSyncWithEmptyOrNilProjectIdSucceeds() throws {
+        let schema = Schema([KnittingProject.self, GuideStep.self, RowCounter.self, TimerSession.self])
+        let config = ModelConfiguration(isStoredInMemoryOnly: true)
+        let container = try ModelContainer(for: schema, configurations: [config])
+        let context = container.mainContext
+        
+        let project = KnittingProject(title: "Sync Test Project", designer: "Designer", selectedSize: "M")
+        context.insert(project)
+        try context.save()
+        
+        let testDefaults = UserDefaults(suiteName: "TestDefaults_\(UUID().uuidString)")!
+        let manager = WatchConnectivityIOSManager(userDefaults: testDefaults, setupSession: false)
+        manager.configure(with: context)
+        
+        // (1) projectId = "" (come inviato dall'orologio all'avvio a freddo)
+        let replyEmpty = manager.handleIncomingCommand(
+            commandRaw: WatchCommandType.requestFullSync.rawValue,
+            projectId: "",
+            stepId: nil,
+            newCount: nil,
+            oldCount: nil,
+            index: nil,
+            commandId: UUID().uuidString
+        )
+        XCTAssertNotNil(replyEmpty["syncData"], "requestFullSync con projectId vuoto deve restituire syncData")
+        XCTAssertNil(replyEmpty["error"])
+        
+        // (2) projectId = nil
+        let replyNil = manager.handleIncomingCommand(
+            commandRaw: WatchCommandType.requestFullSync.rawValue,
+            projectId: nil,
+            stepId: nil,
+            newCount: nil,
+            oldCount: nil,
+            index: nil,
+            commandId: UUID().uuidString
+        )
+        XCTAssertNotNil(replyNil["syncData"], "requestFullSync con projectId nil deve restituire syncData")
+        XCTAssertNil(replyNil["error"])
+    }
 }
 
 // MARK: - FakeWatchTransport per testing disaccoppiato da WCSession

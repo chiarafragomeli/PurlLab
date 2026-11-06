@@ -1,0 +1,49 @@
+# Xcode
+## User settings & personal state
+xcuserdata/
+*.xcuserdatad/
+*.xcuserstate
+*.xcbkptlist
+*.xccheckout
+*.xcscmblueprint
+project.xcworkspace/xcuserdata/
+*.xcodeproj/xcuserdata/
+*.xcodeproj/project.xcworkspace/xcuserdata/
+
+## Build products & intermediates
+build/
+DerivedData/
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+## macOS System Files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+## Secrets, Credentials & Environment
+.env
+.env.*
+*.env
+*.pem
+*.p12
+*.cer
+*.key
+*.mobileprovision
+GoogleService-Info.plist
+
+## Fastlane
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots
+fastlane/test_output
+
+## Swift Package Manager / CocoaPods
+.build/
+Pods/
+Carthage/Build/

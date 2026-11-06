@@ -150,6 +150,11 @@ final class WatchCommandCoordinator {
                 updated[idx].currentCount = local.currentCount
                 updated[idx].totalRowsWorked = local.totalRowsWorked
                 updated[idx].totalStitchesWorked = local.totalStitchesWorked
+                updated[idx].isTimerRunning = local.isTimerRunning
+                updated[idx].timerSessionStartDate = local.timerSessionStartDate
+                if local.isTimerRunning {
+                    updated[idx].totalSecondsWorked = local.totalSecondsWorked
+                }
             } else {
                 clearProtectionIfSubsequent(projectId: proj.id, incomingTimestamp: state.timestamp)
             }
@@ -204,6 +209,7 @@ struct WatchProjectSummary: Codable, Identifiable, Sendable {
     var selectedSize: String
     var totalSecondsWorked: TimeInterval
     var isTimerRunning: Bool
+    var timerSessionStartDate: Date? = nil
     
     // Scheda e Sezione Operativa Attualmente Lavorata
     var activeStepId: String?

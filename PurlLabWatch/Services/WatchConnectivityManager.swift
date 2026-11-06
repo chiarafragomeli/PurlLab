@@ -199,6 +199,15 @@ final class WatchConnectivityManager: NSObject, WCSessionDelegate {
         guard var current = activeProject else { return }
         let newRunningState = !current.isTimerRunning
         current.isTimerRunning = newRunningState
+        if newRunningState {
+            current.timerSessionStartDate = clock.now
+        } else {
+            if let start = current.timerSessionStartDate {
+                let elapsed = max(0, clock.now.timeIntervalSince(start))
+                current.totalSecondsWorked += elapsed
+            }
+            current.timerSessionStartDate = nil
+        }
         updateProjectLocally(current)
         
         playHaptic(newRunningState ? .start : .stop)
@@ -314,9 +323,10 @@ final class WatchConnectivityManager: NSObject, WCSessionDelegate {
     // MARK: - WCSessionDelegate
     nonisolated func session(_ session: WCSession, activationDidCompleteWith activationState: WCSessionActivationState, error: Error?) {
         let isReachable = session.isReachable
+        let isActivated = (activationState == .activated)
         Task { @MainActor in
             self.isConnectedToPhone = isReachable
-            if isReachable {
+            if isActivated {
                 self.requestSyncFromPhone()
             }
         }
